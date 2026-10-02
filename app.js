@@ -116,12 +116,36 @@ $('create').onsubmit = async e => {
   $('kit').replaceChildren();
   status('Memory agents are building and reviewing your storyboard…');
   try {
-    const k = await createKit({ text: $('source').value, kind: $('kind').value, module: $('module').value, mode: $('mode').value, absurdity: $('absurdity').value });
+    const k = await createKit({ text: $('source').value, kind: $('kind').value, module: $('module').value, mode: $('mode').value, absurdity: $('absurdity').value, technique: $('technique').value });
     show(k);
     await library();
     status('Storyboard saved. Generate the images when ready.');
   } catch (e) { status(e.message); } finally { $('generate').disabled = false; }
 };
+
+// How the technique was chosen: the facts code read, the decision model's typed answers, and the contract that was enforced.
+function decisionPanel(k) {
+  const d = k.decision, f = d.facts, panel = el('details', null, 'decision');
+  const who = { learner: 'You chose the technique.', code: 'Decided by the facts of the material, without a model.', laya: 'Chosen by the decision model.', nemotron: 'Chosen by the Memory Expert' + (k.technique.escalated ? ', because: ' + k.technique.escalated : '.') }[k.technique.selectedBy] || '';
+  panel.append(el('summary', 'How this technique was chosen'), el('p', who));
+  const noted = [f.unitCount + (f.unitCount === 1 ? ' item' : ' items'), f.totalDigits ? f.totalDigits + ' digits' : 'no digits',
+    f.digitsOnly && 'digits only', f.numbered && 'items numbered from 1', f.dated && 'each item starts with a year or number', f.translations && 'word-and-meaning pairs', f.titledNames && 'names with titles'].filter(Boolean);
+  panel.append(el('p', 'Facts read by code: ' + noted.join(' · ') + '.'));
+  if (d.answers?.length) {
+    const table = el('table'), head = el('tr');
+    head.append(el('th', 'Question put to the decision model'), el('th', 'Answer'), el('th', 'Certainty'));
+    table.append(head);
+    for (const a of d.answers) {
+      const row = el('tr'), certainty = a.type === 'yes_no' ? Math.round((a.answer === 'yes' ? a.probability : 1 - a.probability) * 100) : Math.round(a.confidence * 100);
+      row.append(el('td', a.question), el('td', String(a.answer).replace(/_/g, ' ')), el('td', certainty + '%'));
+      table.append(row);
+    }
+    panel.append(table, el('p', 'The decision model is right about three times in four on our test material, so its answer is used only when it is confident and agrees with the facts.', 'built-with'));
+  } else panel.append(el('p', d.error ? 'The decision model was unavailable.' : 'The decision model is not configured.'));
+  if (k.contract) panel.append(el('p', 'Contract enforced by code: every scene keeps the source wording' + (k.contract.evidence_required === 'none' ? '' : ', supplies the ' + k.contract.name + ' evidence that code checks') + ', and no image prompt may ask for numerals, words, labels or logos.'));
+  if (d.cueCheck?.checks) panel.append(el('p', 'Cue check (advisory): ' + d.cueCheck.checks.filter(c => c.matches).length + ' of ' + d.cueCheck.checks.length + ' cues were read back as their own item.'));
+  return panel;
+}
 
 async function generateImage(k, i) {
   k.scenes[i] = await api('kits/' + k.id + '/image', 'POST', { index: i });
@@ -133,6 +157,7 @@ function show(k) {
   wrap.replaceChildren();
   wrap.append(el('h2', k.title), el('p', (k.technique.name || k.technique.technique) + ' · ' + k.technique.reason));
   if (k.ai) wrap.append(el('p', 'Built with ' + k.ai.model + ' on ' + k.ai.platform + '.', 'built-with'));
+  if (k.decision) wrap.append(decisionPanel(k));
 
   const grid = el('div', null, 'scenes');
   k.scenes.forEach((s, i) => {

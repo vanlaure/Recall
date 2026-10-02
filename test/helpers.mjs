@@ -1,8 +1,80 @@
-// Shared test helpers: a throwaway server process with its own data folder, and a cookie-carrying client.
+// Shared test helpers: stand-in providers, a throwaway server process with its own data folder, and a cookie-carrying client.
+import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+export async function listen(handler) {
+  const server = http.createServer(async (req, res) => {
+    let s = ''; for await (const c of req) s += c;
+    const [status, body] = handler(req.url, JSON.parse(s));
+    res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body));
+  });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  return { url: 'http://127.0.0.1:' + server.address().port, close: () => server.close() };
+}
+
+// Major-system words that really decode to these digits, for storyboards that must pass the contract check.
+export const MAJOR_WORDS = { 8472: ['far', 'ken'], 1066: ['tea', 'sea', 'she', 'she'] };
+
+// A storyboard that satisfies the contract it was given: correct sources, technique evidence and clean prompts.
+export function compliant(contract) {
+  const units = contract.source_units, t = contract.primary_technique;
+  return {
+    scenes: units.map((source, i) => {
+      const next = units[i + 1], digits = (source.match(/\d/g) || []).join('');
+      const evidence = {
+        link: { links_to: next ?? null }, loci: { location: 'place ' + 'abcdefgh'[i] }, peg: { peg: 'hook' + 'abcdefgh'[i] },
+        major: { words: MAJOR_WORDS[digits] }, keyword: { keyword: 'soundalike' }, chunk: { chunks: [source.slice(0, 3), source.slice(3)] },
+        shape: { pegs: [...digits].map(d => ({ digit: d, object: 'swan' })) }, pao: { person: 'pilot', action: 'juggling', object: 'lantern' },
+      }[t] || {};
+      const extra = { link: next ? ' touching ' + next : '', loci: ' at place ' + 'abcdefgh'[i], peg: ' on hook' + 'abcdefgh'[i], major: ' ' + (MAJOR_WORDS[digits] || []).join(' '), keyword: ' soundalike', shape: ' swan', pao: ' pilot juggling lantern' }[t] || '';
+      return { source, cue: 'cue for ' + source + extra, prompt: 'an ink drawing for scene ' + 'abcdefgh'[i], evidence };
+    }),
+  };
+}
+
+// Stand-ins for the text model and the decision model. `script` supplies each agent's replies in order (the last
+// one repeats); a storyboard entry is a function of the request state, or null for a compliant storyboard.
+// `laya` is [recallTarget, confidence], or omitted to leave the decision model unconfigured. `calls` records requests.
+export async function mocks({ laya, expert = { technique: 'visual', reason: 'default' }, storyboard, rules = [{ approved: true, issues: [] }], jpeg } = {}) {
+  const calls = { expert: [], storyboard: [], rules: [], laya: [], image: [] };
+  const next = (list, n) => list[Math.min(n, list.length) - 1];
+  const chat = await listen((url, body) => {
+    if (url.startsWith('/genai/')) { calls.image.push(body); return [200, { artifacts: [{ base64: jpeg }] }]; }
+    const role = body.messages[0].content, state = JSON.parse(body.messages[1].content);
+    let reply;
+    if (role.startsWith('Memory Expert')) { calls.expert.push(state); reply = expert; }
+    else if (role.startsWith('Association and Storyboard')) {
+      calls.storyboard.push(state);
+      const make = storyboard ? next(storyboard, calls.storyboard.length) : null;
+      reply = make ? make(state) : compliant(state.contract);
+    } else if (role.startsWith('Rules Agent')) { calls.rules.push(state); reply = next(rules, calls.rules.length); }
+    else reply = { score: .5, feedback: 'half' };
+    return [200, { choices: [{ message: { content: JSON.stringify(reply) } }] }];
+  });
+  const layaServer = laya ? await listen((url, body) => {
+    calls.laya.push(body);
+    const answers = {};
+    for (const [id, q] of Object.entries(body.questions)) {
+      if (q.type === 'noul') answers[id] = { type: 'noul', noul: .1, confidence: .9 };
+      else if (id === 'target') answers[id] = { type: 'choice', choice: laya[0], answer_confidence: laya[1], probabilities: { [laya[0]]: laya[1] } };
+      // The cue check: answer with the first option whose text appears in the cue.
+      else { const hit = Object.keys(q.criteria).find(k => body.state.includes(q.criteria[k])) || Object.keys(q.criteria)[0]; answers[id] = { type: 'choice', choice: hit, answer_confidence: .8, probabilities: {} }; }
+    }
+    return [200, { answers, routing: { model: 'english' } }];
+  }) : null;
+  const env = { TEXT_PROVIDER: 'nebius', NEBIUS_BASE_URL: chat.url, NEBIUS_API_KEY: 'k', NEBIUS_MODEL: 'nvidia/test', LAYA_BASE_URL: layaServer?.url || '', LAYA_MIN_CONFIDENCE: '0.5', PROVIDER_RETRY_MS: '1', ...(jpeg ? { IMAGE_BASE_URL: chat.url + '/genai', IMAGE_MODEL: 'vendor/model', IMAGE_API_KEY: 'k' } : {}) };
+  return { calls, env, close: () => { chat.close(); layaServer?.close(); } };
+}
+
+// Runs fn with the mock providers configured in this process, then restores the environment.
+export async function withMocks(script, fn) {
+  const m = await mocks(script), saved = {};
+  for (const k of Object.keys(m.env)) { saved[k] = process.env[k]; if (m.env[k]) process.env[k] = m.env[k]; else delete process.env[k]; }
+  try { return await fn(m); } finally { m.close(); for (const k of Object.keys(saved)) saved[k] === undefined ? delete process.env[k] : process.env[k] = saved[k]; }
+}
 
 export async function startServer(port, env = {}, dir) {
   const dataDir = dir || await mkdtemp(join(tmpdir(), 'recall-test-'));

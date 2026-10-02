@@ -1,6 +1,6 @@
 // Live check of every configured AI provider. Run with `npm run check` after editing .env.
 // Never prints key values. Exits non-zero if a configured provider fails or text is unconfigured.
-import {agent,decide,image,transcribe,textProvider} from '../lib/providers.mjs';import {techniques} from '../lib/memory.mjs';
+import {agent,ask,image,transcribe,textProvider} from '../lib/providers.mjs';import {QUESTIONS,decisionState} from '../lib/decision.mjs';
 const env=process.env,base=u=>u.replace(/\/$/,'');let failed=false;
 const ok=(name,msg)=>console.log('PASS  '+name+' — '+msg),skip=(name,msg)=>console.log('SKIP  '+name+' — '+msg),fail=(name,msg)=>{failed=true;console.log('FAIL  '+name+' — '+msg)};
 const set=k=>env[k]?'set':'missing';
@@ -31,7 +31,7 @@ else try{
 
 // Laya: optional advisory service.
 if(!env.LAYA_BASE_URL)skip('laya','LAYA_BASE_URL is missing. The Nemotron Memory Expert picks the technique instead.');
-else try{const t=Date.now(),r=await decide(['8472'],techniques);ok('laya','chose "'+r.technique+'" for a PIN at '+Math.round(r.confidence*100)+'% confidence in '+(Date.now()-t)+' ms ('+r.checkpoint+' checkpoint)')}catch(e){fail('laya',e.message)}
+else try{const r=await ask(decisionState(['8472'],'exact'),QUESTIONS),t=r.answers.target;ok('laya','answered '+Object.keys(QUESTIONS).length+' typed questions in '+r.ms+' ms; read a PIN as "'+t.choice+'" at '+Math.round(t.answer_confidence*100)+'% ('+r.checkpoint+' checkpoint)')}catch(e){fail('laya',e.message)}
 
 console.log('SIGNUP_CODE is '+set('SIGNUP_CODE')+(env.SIGNUP_CODE?' — only people with the code can create an account.':' — anyone who can reach the app can create an account; set it before hosting the demo publicly.'));
 process.exitCode=failed?1:0;
