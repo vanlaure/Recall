@@ -1,6 +1,6 @@
 // Live check of every configured AI provider. Run with `npm run check` after editing .env.
 // Never prints key values. Exits non-zero if a configured provider fails or text is unconfigured.
-import {agent,decide,image} from '../lib/providers.mjs';import {techniques} from '../lib/memory.mjs';
+import {agent,decide,image,transcribe} from '../lib/providers.mjs';import {techniques} from '../lib/memory.mjs';
 const env=process.env,base=u=>u.replace(/\/$/,'');let failed=false;
 const ok=(name,msg)=>console.log('PASS  '+name+' — '+msg),skip=(name,msg)=>console.log('SKIP  '+name+' — '+msg),fail=(name,msg)=>{failed=true;console.log('FAIL  '+name+' — '+msg)};
 const set=k=>env[k]?'set':'missing';
@@ -26,9 +26,7 @@ else try{const t=Date.now(),src=await image('A red apple wearing sunglasses, ink
 if(!env.SPEECH_BASE_URL||!env.SPEECH_MODEL)skip('speech','SPEECH_BASE_URL is '+set('SPEECH_BASE_URL')+', SPEECH_MODEL is '+set('SPEECH_MODEL')+'. Recording and audio upload are disabled; typing still works.');
 else try{
   const rate=16000,wav=Buffer.alloc(44+rate*2);wav.write('RIFF',0);wav.writeUInt32LE(36+rate*2,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(rate,24);wav.writeUInt32LE(rate*2,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(rate*2,40);
-  const form=new FormData();form.append('model',env.SPEECH_MODEL);form.append('file',new Blob([wav],{type:'audio/wav'}),'silence.wav');
-  const t=Date.now(),r=await fetch(base(env.SPEECH_BASE_URL)+'/audio/transcriptions',{method:'POST',headers:{Authorization:'Bearer '+env.SPEECH_API_KEY},body:form,signal:AbortSignal.timeout(120000)});
-  if(!r.ok)fail('speech','transcription endpoint returned '+r.status);else if(typeof (await r.json()).text!=='string')fail('speech','response has no text field');else ok('speech',env.SPEECH_MODEL+' accepted audio in '+(Date.now()-t)+' ms');
+  const t=Date.now(),text=await transcribe(wav,'audio/wav');if(typeof text!=='string')fail('speech','provider returned no text');else ok('speech',env.SPEECH_MODEL+' accepted audio in '+(Date.now()-t)+' ms');
 }catch(e){fail('speech',e.message)}
 
 // Laya: optional advisory service.
