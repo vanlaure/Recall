@@ -14,7 +14,7 @@ Visit http://localhost:3000 for the landing page and http://localhost:3000/app f
 
 ## Configure real AI
 
-Set `NEBIUS_API_KEY` and `NEBIUS_MODEL` to a currently available NVIDIA Nemotron model ID from Nebius Token Factory. The backend calls its OpenAI-compatible chat completions API. Set image and speech base URLs, API keys and model IDs for compatible `/images/generations` and `/audio/transcriptions` services. Unsupported endpoint formats need a provider adapter. Configure `.env` locally; never commit credentials.
+Set `NEBIUS_API_KEY`; `NEBIUS_MODEL` defaults to `nvidia/nemotron-3-super-120b-a12b` in `.env.example`, which also lists the other Nemotron IDs. The backend calls Token Factory's OpenAI-compatible chat completions API. After editing `.env`, run `npm run check`: it makes one live call per configured provider, lists the NVIDIA models on your account, and reports pass, skip or fail without printing keys. Set image and speech base URLs, API keys and model IDs for compatible `/images/generations` and `/audio/transcriptions` services. Unsupported endpoint formats need a provider adapter. Configure `.env` locally; never commit credentials.
 
 Optional: install `laya[serve]` in a separate Python environment and run `laya-serve`. Set `LAYA_BASE_URL` to that service. Laya output is logged as advisory evidence; it is not trusted as a rules gate or automatically used to change techniques. Checkpoint origins, licenses, output contract and domain accuracy require validation before enabling it for judging.
 
