@@ -1,6 +1,6 @@
 // Live check of every configured AI provider. Run with `npm run check` after editing .env.
 // Never prints key values. Exits non-zero if a configured provider fails or text is unconfigured.
-import {agent,decide,image} from '../lib/providers.mjs';
+import {agent,decide,image} from '../lib/providers.mjs';import {techniques} from '../lib/memory.mjs';
 const env=process.env,base=u=>u.replace(/\/$/,'');let failed=false;
 const ok=(name,msg)=>console.log('PASS  '+name+' — '+msg),skip=(name,msg)=>console.log('SKIP  '+name+' — '+msg),fail=(name,msg)=>{failed=true;console.log('FAIL  '+name+' — '+msg)};
 const set=k=>env[k]?'set':'missing';
@@ -32,8 +32,8 @@ else try{
 }catch(e){fail('speech',e.message)}
 
 // Laya: optional advisory service.
-if(!env.LAYA_BASE_URL)skip('laya','LAYA_BASE_URL is missing. The Memory Expert selection is used on its own.');
-else try{await decide({units:['milk'],selection:{technique:'link'}});ok('laya','decision service answered')}catch(e){fail('laya',e.message)}
+if(!env.LAYA_BASE_URL)skip('laya','LAYA_BASE_URL is missing. The Nemotron Memory Expert picks the technique instead.');
+else try{const t=Date.now(),r=await decide(['8472'],techniques);ok('laya','chose "'+r.technique+'" for a PIN at '+Math.round(r.confidence*100)+'% confidence in '+(Date.now()-t)+' ms ('+r.checkpoint+' checkpoint)')}catch(e){fail('laya',e.message)}
 
 console.log('APP_TOKEN is '+set('APP_TOKEN')+(env.APP_TOKEN?'':' — fine on 127.0.0.1, required before hosting the demo publicly.'));
 process.exitCode=failed?1:0;
