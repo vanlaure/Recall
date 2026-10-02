@@ -60,7 +60,7 @@ async function init() {
   try {
     const c = await api('config');
     const text = c.text ? c.textProvider.model.split('/').pop() + ' via ' + c.textProvider.label : 'needs setup (' + c.textProvider.label + ')';
-    $('config').textContent = `Text AI: ${text} · Images: ${c.images ? 'configured' : 'needs setup'} · Speech: ${c.voice ? 'configured' : 'needs setup'} · Laya: ${c.laya ? 'connected' : 'optional, not configured'}`;
+    $('config').textContent = `Text AI: ${text} · Images: ${c.images ? 'configured' + (c.vision ? ', checked by ' + c.vision.split('/').pop() : ', not inspected') : 'needs setup'} · Speech: ${c.voice ? 'configured' : 'needs setup'} · Laya: ${c.laya ? 'connected' : 'optional, not configured'}`;
     $('techniques').replaceChildren(...c.techniques.map(t => el('p', t[1] + ': ' + t[2])));
     $('code').hidden = $('code-label').hidden = !c.signupCode;
     const me = await fetch('/api/me');
@@ -147,6 +147,16 @@ function decisionPanel(k) {
   return panel;
 }
 
+// What the image inspection found: accepted, kept for the learner to judge after repeated failures, or not inspected.
+function reviewLine(r) {
+  if (r.status === 'accepted') {
+    const f = r.findings, parts = ['no text or logos', f.style === 'consistent' ? 'style consistent' : 'style close', f.required.length ? 'all ' + f.required.length + ' required objects present' : null, ...(r.notes || [])].filter(Boolean);
+    return el('p', '✓ Image checked: ' + parts.join(', ') + (r.attempts > 1 ? ' (attempt ' + r.attempts + '; earlier: ' + r.rejected.map(x => x.join('; ')).join(' / ') + ')' : '') + '.', 'image-review ok');
+  }
+  if (r.status === 'needs_review') return el('p', '⚠ Needs your review. After ' + r.attempts + ' attempts the image still has: ' + r.issues.join('; ') + '. Regenerate it or judge it yourself.', 'image-review warn');
+  return el('p', 'Image not inspected: ' + r.reason, 'image-review');
+}
+
 async function generateImage(k, i) {
   k.scenes[i] = await api('kits/' + k.id + '/image', 'POST', { index: i });
 }
@@ -163,7 +173,7 @@ function show(k) {
   k.scenes.forEach((s, i) => {
     const card = el('article', null, 'scene');
     card.append(el('h3', 'Scene ' + (i + 1)));
-    if (s.image) { const img = el('img'); img.src = s.image; img.alt = s.cue; card.append(img); }
+    if (s.image) { const img = el('img'); img.src = s.image; img.alt = s.cue; card.append(img); if (s.review) card.append(reviewLine(s.review)); }
     else card.append(el('p', 'Image not generated yet.', 'placeholder'));
     card.append(el('p', s.source, 'source'), el('p', s.cue, 'cue'));
     const detail = el('details');

@@ -25,7 +25,8 @@ Optional decision model, [Laya](https://github.com/NandhaKishorM/laya) (Apache-2
 - Learning modules for everyday memory, school, college, medical study, Bible verses, older adults and speeches. Module choice informs prompts; this is not yet a distinct curriculum for each audience.
 - Technique selection: the learner's own choice if workable, else exact facts read by code, else the decision model when confident, else the Nemotron Memory Expert. The studio shows the questions asked and the answers.
 - A technique contract enforced by code: exact source wording, technique-specific evidence (Major-system words must decode to the digits, each memory-palace cue needs its own location, and so on) and image prompts free of numerals, words, labels and logos. Violations go back to the generating agent with the specific issue, at most three times.
-- A Nemotron Rules agent reviews cue ambiguity after the contract passes. Source coverage, verbatim wording and order checked deterministically.
+- A Nemotron Rules agent reviews cue ambiguity after the contract passes.
+- Image inspection: a vision model reports what each generated image shows, and code rejects visible text, numerals, logos, photographed people, the wrong style or a missing required object. Rejected images are regenerated with a targeted correction, at most three times, then kept and marked for the learner's review. Source coverage, verbatim wording and order checked deterministically.
 - Live agent progress: the studio shows each step (technique selection, storyboard, rules review, revisions) as the server streams it.
 - Scene prompts, image generation per scene or for the whole storyboard in one click, regeneration, source text and cues beneath images.
 - Accounts with a username and password. Each account has its own library in `data/users/<id>/` (kits in `kits.json`, images as files), which other accounts cannot read, change or delete. Deletion, JSON export, visible agent trace.
@@ -36,7 +37,7 @@ Optional decision model, [Laya](https://github.com/NandhaKishorM/laya) (Apache-2
 
 This is a prototype, not a hardened production service. Provider keys stay server-side. Passwords are stored as salted scrypt hashes and sessions as SHA-256 hashes; the session cookie is HttpOnly and SameSite=Strict. The server binds to loopback by default: put it behind an HTTPS reverse proxy before remote access, and set `SIGNUP_CODE` so only invited people can create accounts and use your provider credits. There is no password reset or account deletion yet. Kit data is plain JSON on disk, not encrypted; back up the data directory. A library saved before accounts existed (`data/kits.json`) is moved into the first account created. Provider terms govern transmitted text/audio and generated images. Recording is limited to 60 seconds; uploaded audio is capped at 10 MB in the UI. Raw audio is not persisted by Recall.
 
-Generated images are mnemonic symbols, not verified medical diagrams. Bible users supply text they have permission to use. Generated scene review currently checks text; automatic vision review of generated images, advanced accessibility preferences, password reset, queues, encrypted storage and robust spaced-repetition calibration remain future work.
+Generated images are mnemonic symbols, not verified medical diagrams. Bible users supply text they have permission to use. Scored scene rubrics, practice adaptation from recall errors, clarifying questions to the learner, advanced accessibility preferences, password reset, queues, encrypted storage and robust spaced-repetition calibration remain future work.
 
 ## Reuse and licenses
 

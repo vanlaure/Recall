@@ -1,0 +1,23 @@
+{
+  "about": "Labelled images for measuring the image inspection. `required` is what the scene asked for; `accept` is whether a careful person would accept the image under the image rules; `because` names the rule a rejected image breaks. Images named breaker-* were generated to break one rule on purpose; decoy entries ask for an object that is not in the picture.",
+  "samples": [
+    { "image": "link-milk-eggs-bread.jpg", "required": ["milk carton", "eggs", "bread"], "cue": "a milk carton throws eggs at a loaf of bread", "accept": true },
+    { "image": "number-turtle-pie.jpg", "required": ["turtle", "pie"], "cue": "a turtle carries a pie on its shell", "accept": true },
+    { "image": "keyword-duck-pot.jpg", "required": ["duck", "cooking pot"], "cue": "a duck wears a cooking pot as a helmet", "accept": true },
+    { "image": "name-armstrong.jpg", "required": ["man", "muscular arm"], "cue": "a man with one huge muscular arm shakes hands", "accept": true },
+    { "image": "palace-door-sofa-fridge.jpg", "required": ["tooth", "sofa", "fridge", "batteries"], "cue": "a tooth at the door, envelopes on the sofa, batteries in the fridge", "accept": true },
+    { "image": "verse-john-3-16.jpg", "required": ["heart", "globe", "clock"], "cue": "a heart hugs a globe beside a clock", "accept": true },
+    { "image": "number-fire-can.jpg", "required": ["can", "flames"], "cue": "a can on fire in front of a door", "accept": true },
+    { "image": "generated-duck-pot.jpg", "required": ["duck", "cooking pot"], "cue": "a duck wears a cooking pot as a helmet", "accept": true },
+    { "image": "generated-bread-carton.jpg", "required": ["loaf of bread"], "cue": "a loaf of bread grabs a carton", "accept": true },
+    { "image": "link-apple-car.jpg", "required": ["apple", "car"], "cue": "a giant apple crushes a car", "accept": false, "because": "text" },
+    { "image": "generated-photo-milk-carton.jpg", "required": ["milk carton", "egg"], "cue": "milk pours onto an egg in a pan", "accept": false, "because": "text or photographic style" },
+    { "image": "breaker-shop-sign-text.jpg", "required": ["shop"], "cue": "a small shop", "accept": false, "because": "text" },
+    { "image": "breaker-numbers-on-clock.jpg", "required": ["alarm clock"], "cue": "an alarm clock", "accept": false, "because": "numerals" },
+    { "image": "breaker-labelled-jar.jpg", "required": ["jar"], "cue": "a glass jar", "accept": false, "because": "text" },
+    { "image": "breaker-photo-portrait.jpg", "required": ["man"], "cue": "a man in a suit", "accept": false, "because": "photograph of a person" },
+    { "image": "breaker-painted-landscape.jpg", "required": ["mountains"], "cue": "a mountain valley", "accept": false, "because": "style" },
+    { "image": "keyword-duck-pot.jpg", "required": ["duck", "bicycle"], "cue": "a duck rides a bicycle", "accept": false, "because": "missing object (decoy)" },
+    { "image": "number-turtle-pie.jpg", "required": ["turtle", "umbrella"], "cue": "a turtle holds an umbrella", "accept": false, "because": "missing object (decoy)" }
+  ]
+}

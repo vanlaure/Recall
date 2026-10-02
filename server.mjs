@@ -3,8 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { techniques } from './lib/memory.mjs';
-import { image, transcribe, textProvider } from './lib/providers.mjs';
-import { createKit, reviewKit } from './lib/orchestrate.mjs';
+import { transcribe, textProvider } from './lib/providers.mjs';
+import { createKit, reviewKit, illustrate } from './lib/orchestrate.mjs';
+import { visionModel } from './lib/vision.mjs';
 import { openAccounts, limiter } from './lib/accounts.mjs';
 import { openStore, contentType } from './lib/store.mjs';
 
@@ -96,7 +97,9 @@ async function handleKit(req, res, user, match, b) {
     const scene = kit.scenes[b.index];
     if (!Number.isInteger(b.index) || !scene) throw Error('Invalid scene.');
     if (!limits.allow('image:' + user.id, allowance.image, HOUR)) fail('Hourly image limit reached. Try again later.', 429);
-    scene.image = await store.saveImage(user.id, kit, b.index, await image(scene.prompt));
+    const result = await illustrate(scene);
+    scene.image = await store.saveImage(user.id, kit, b.index, result.image);
+    scene.review = result.review;
     await store.save(user.id);
     return send(res, 200, scene);
   }
@@ -120,7 +123,7 @@ const server = http.createServer(async (req, res) => {
     // Open to everyone: what is configured, and whether sign-up needs a code.
     if (req.method === 'GET' && url.pathname === '/api/config') {
       const p = textProvider();
-      return send(res, 200, { text: !!(p.key && p.model), textProvider: { name: p.name, label: p.label, model: p.model }, images: !!process.env.IMAGE_MODEL, voice: !!process.env.SPEECH_MODEL, laya: !!process.env.LAYA_BASE_URL, signupCode: !!process.env.SIGNUP_CODE, techniques });
+      return send(res, 200, { text: !!(p.key && p.model), textProvider: { name: p.name, label: p.label, model: p.model }, images: !!process.env.IMAGE_MODEL, vision: visionModel()?.model || null, voice: !!process.env.SPEECH_MODEL, laya: !!process.env.LAYA_BASE_URL, signupCode: !!process.env.SIGNUP_CODE, techniques });
     }
     if (req.method === 'POST' && ['/api/register', '/api/login', '/api/logout'].includes(url.pathname)) return await handleAuth(req, res, url, await body(req));
 

@@ -30,7 +30,7 @@ export function compliant(contract) {
         shape: { pegs: [...digits].map(d => ({ digit: d, object: 'swan' })) }, pao: { person: 'pilot', action: 'juggling', object: 'lantern' },
       }[t] || {};
       const extra = { link: next ? ' touching ' + next : '', loci: ' at place ' + 'abcdefgh'[i], peg: ' on hook' + 'abcdefgh'[i], major: ' ' + (MAJOR_WORDS[digits] || []).join(' '), keyword: ' soundalike', shape: ' swan', pao: ' pilot juggling lantern' }[t] || '';
-      return { source, cue: 'cue for ' + source + extra, prompt: 'an ink drawing for scene ' + 'abcdefgh'[i], evidence };
+      return { source, cue: 'cue for ' + source + extra, prompt: 'an ink drawing for scene ' + 'abcdefgh'[i], objects: ['thing ' + 'abcdefgh'[i]], evidence };
     }),
   };
 }
@@ -38,11 +38,21 @@ export function compliant(contract) {
 // Stand-ins for the text model and the decision model. `script` supplies each agent's replies in order (the last
 // one repeats); a storyboard entry is a function of the request state, or null for a compliant storyboard.
 // `laya` is [recallTarget, confidence], or omitted to leave the decision model unconfigured. `calls` records requests.
-export async function mocks({ laya, expert = { technique: 'visual', reason: 'default' }, storyboard, rules = [{ approved: true, issues: [] }], jpeg } = {}) {
-  const calls = { expert: [], storyboard: [], rules: [], laya: [], image: [] };
+// `vision` supplies the image inspector's reports in order; each is merged over a report that passes every rule.
+export const CLEAN = { visible_objects: ['thing'], text: 'not_detected', logo_or_brand: 'not_detected', real_person: 'not_detected', style: 'consistent', interaction: 'correct_action', clarity: 'clear' };
+export async function mocks({ laya, expert = { technique: 'visual', reason: 'default' }, storyboard, rules = [{ approved: true, issues: [] }], jpeg, vision = [{}] } = {}) {
+  const calls = { expert: [], storyboard: [], rules: [], laya: [], image: [], vision: [] };
   const next = (list, n) => list[Math.min(n, list.length) - 1];
   const chat = await listen((url, body) => {
     if (url.startsWith('/genai/')) { calls.image.push(body); return [200, { artifacts: [{ base64: jpeg }] }]; }
+    if (Array.isArray(body.messages[0].content)) {
+      // The image inspector: by default every required object is reported present.
+      const text = body.messages[0].content[0].text, required = JSON.parse(text.match(/Required objects: (\[.*\])/)[1]);
+      calls.vision.push({ model: body.model, required, image: body.messages[0].content[1].image_url.url });
+      const given = next(vision, calls.vision.length);
+      const report = typeof given === 'string' ? given : JSON.stringify({ ...CLEAN, required: required.map(object => ({ object, present: true })), ...given });
+      return [200, { choices: [{ message: { content: report } }] }];
+    }
     const role = body.messages[0].content, state = JSON.parse(body.messages[1].content);
     let reply;
     if (role.startsWith('Memory Expert')) { calls.expert.push(state); reply = expert; }
@@ -65,21 +75,21 @@ export async function mocks({ laya, expert = { technique: 'visual', reason: 'def
     }
     return [200, { answers, routing: { model: 'english' } }];
   }) : null;
-  const env = { TEXT_PROVIDER: 'nebius', NEBIUS_BASE_URL: chat.url, NEBIUS_API_KEY: 'k', NEBIUS_MODEL: 'nvidia/test', LAYA_BASE_URL: layaServer?.url || '', LAYA_MIN_CONFIDENCE: '0.5', PROVIDER_RETRY_MS: '1', ...(jpeg ? { IMAGE_BASE_URL: chat.url + '/genai', IMAGE_MODEL: 'vendor/model', IMAGE_API_KEY: 'k' } : {}) };
+  const env = { TEXT_PROVIDER: 'nebius', NEBIUS_BASE_URL: chat.url, NEBIUS_API_KEY: 'k', NEBIUS_MODEL: 'nvidia/test', LAYA_BASE_URL: layaServer?.url || '', LAYA_MIN_CONFIDENCE: '0.5', PROVIDER_RETRY_MS: '1', VISION_PROVIDER: '', NEBIUS_VISION_MODEL: vision ? 'vision/test' : '', ...(jpeg ? { IMAGE_BASE_URL: chat.url + '/genai', IMAGE_MODEL: 'vendor/model', IMAGE_API_KEY: 'k' } : {}) };
   return { calls, env, close: () => { chat.close(); layaServer?.close(); } };
 }
 
 // Runs fn with the mock providers configured in this process, then restores the environment.
 export async function withMocks(script, fn) {
   const m = await mocks(script), saved = {};
-  for (const k of Object.keys(m.env)) { saved[k] = process.env[k]; if (m.env[k]) process.env[k] = m.env[k]; else delete process.env[k]; }
+  for (const k of Object.keys(m.env)) { saved[k] = process.env[k]; if (m.env[k] || k === 'NEBIUS_VISION_MODEL') process.env[k] = m.env[k]; else delete process.env[k]; }
   try { return await fn(m); } finally { m.close(); for (const k of Object.keys(saved)) saved[k] === undefined ? delete process.env[k] : process.env[k] = saved[k]; }
 }
 
 export async function startServer(port, env = {}, dir) {
   const dataDir = dir || await mkdtemp(join(tmpdir(), 'recall-test-'));
   const child = spawn(process.execPath, ['server.mjs'], {
-    env: { ...process.env, TEXT_PROVIDER: '', NEBIUS_API_KEY: '', NEBIUS_MODEL: '', LAYA_BASE_URL: '', SIGNUP_CODE: '', IMAGE_BASE_URL: '', IMAGE_MODEL: '', ...env, PORT: String(port), DATA_DIR: dataDir },
+    env: { ...process.env, TEXT_PROVIDER: '', NEBIUS_API_KEY: '', NEBIUS_MODEL: '', LAYA_BASE_URL: '', SIGNUP_CODE: '', IMAGE_BASE_URL: '', IMAGE_MODEL: '', VISION_PROVIDER: '', NEBIUS_VISION_MODEL: '', ...env, PORT: String(port), DATA_DIR: dataDir },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise((resolve, reject) => { child.stdout.once('data', resolve); child.once('error', reject); child.once('exit', () => reject(Error('Server exited early'))); });
