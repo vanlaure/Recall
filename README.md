@@ -26,15 +26,15 @@ Optional technique selection with [Laya](https://github.com/NandhaKishorM/laya) 
 - Technique selection by Laya (or the Nemotron Memory Expert as fallback), then Association/Storyboard and Rules agent calls orchestrated on the server, with up to three storyboard revisions when the Rules agent rejects. Source coverage, verbatim wording and order checked deterministically.
 - Live agent progress: the studio shows each step (technique selection, storyboard, rules review, revisions) as the server streams it.
 - Scene prompts, image generation per scene or for the whole storyboard in one click, regeneration, source text and cues beneath images.
-- Persistent single-user kit library in `data/kits.json`, deletion, JSON export, visible agent trace.
+- Accounts with a username and password. Each account has its own library in `data/users/<id>/` (kits in `kits.json`, images as files), which other accounts cannot read, change or delete. Deletion, JSON export, visible agent trace.
 - Exact recall of a passage uses normalized word edit distance; a list is scored by items recalled, with missed items named and order reported but not penalised. Meaning recall uses an AI estimate. Reviews schedule the next practice date, and due kits are identified.
 - Technique catalog: loci, links, pegs, keyword, chunking, narrative, Major system, shape/rhyme, PAO, visual association.
 
 ## Scope and deployment
 
-This is a single-user prototype, not a multi-tenant production service. Keys stay server-side. Bind to loopback by default. Set `APP_TOKEN` and use HTTPS with an authenticated reverse proxy before remote access; all authorized users share the same library. Data is plain JSON on disk, not encrypted. Back up the data directory. Provider terms govern transmitted text/audio and generated images. Recording is limited to 60 seconds; uploaded audio is capped at 10 MB in the UI. Raw audio is not persisted by Recall.
+This is a prototype, not a hardened production service. Provider keys stay server-side. Passwords are stored as salted scrypt hashes and sessions as SHA-256 hashes; the session cookie is HttpOnly and SameSite=Strict. The server binds to loopback by default: put it behind an HTTPS reverse proxy before remote access, and set `SIGNUP_CODE` so only invited people can create accounts and use your provider credits. There is no password reset or account deletion yet. Kit data is plain JSON on disk, not encrypted; back up the data directory. A library saved before accounts existed (`data/kits.json`) is moved into the first account created. Provider terms govern transmitted text/audio and generated images. Recording is limited to 60 seconds; uploaded audio is capped at 10 MB in the UI. Raw audio is not persisted by Recall.
 
-Generated images are mnemonic symbols, not verified medical diagrams. Bible users supply text they have permission to use. Generated scene review currently checks text; automatic vision review, verification of number encodings, advanced accessibility preferences, authentication/accounts, queues, encrypted storage and robust spaced-repetition calibration remain future work.
+Generated images are mnemonic symbols, not verified medical diagrams. Bible users supply text they have permission to use. Generated scene review currently checks text; automatic vision review, verification of number encodings, advanced accessibility preferences, password reset, queues, encrypted storage and robust spaced-repetition calibration remain future work.
 
 ## Reuse and licenses
 

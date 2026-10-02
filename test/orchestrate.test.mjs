@@ -1,10 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { spawn } from 'node:child_process';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { startServer, client } from './helpers.mjs';
 import { createKit, reviewKit } from '../lib/orchestrate.mjs';
 
 async function listen(handler) {
@@ -109,22 +106,21 @@ test('reviews grade lists by items, passages by wording and meaning by the model
 }));
 
 test('the server streams each agent step and then the saved kit', async () => {
-  const m = await mocks({ laya: ['major', .9] }), dir = await mkdtemp(join(tmpdir(), 'recall-test-'));
-  const child = spawn(process.execPath, ['server.mjs'], { env: { ...process.env, ...m.env, PORT: '3098', APP_TOKEN: '', DATA_DIR: dir }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const m = await mocks({ laya: ['major', .9] }), s = await startServer(3098, m.env);
   try {
-    await new Promise((resolve, reject) => { child.stdout.once('data', resolve); child.once('error', reject); child.once('exit', () => reject(Error('Server exited early'))); });
-    const r = await fetch('http://127.0.0.1:3098/api/kits', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' }, body: JSON.stringify(input) });
+    const c = client(s.base), ndjson = { Accept: 'application/x-ndjson' };
+    await c.register('alice');
+    const r = await c.call('/api/kits', 'POST', input, ndjson);
     assert.equal(r.headers.get('content-type'), 'application/x-ndjson');
     const lines = (await r.text()).trim().split('\n').map(l => JSON.parse(l));
     assert.deepEqual(lines.slice(0, -1).map(l => l.type), Array(7).fill('step'));
     assert.deepEqual(lines[2], { type: 'step', agent: 'Laya technique selector', status: 'done', detail: 'Major system at 90% confidence' });
-    const kit = lines.at(-1).kit;
     assert.equal(lines.at(-1).type, 'kit');
-    assert.equal(JSON.parse(await readFile(join(dir, 'kits.json'), 'utf8'))[0].id, kit.id);
+    assert.equal((await c.json('/api/kits')).body[0].id, lines.at(-1).kit.id);
     // A failure mid-stream arrives as an error line, and plain JSON clients still get a normal response.
-    const bad = await fetch('http://127.0.0.1:3098/api/kits', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' }, body: JSON.stringify({ text: '', kind: 'list' }) });
+    const bad = await c.call('/api/kits', 'POST', { text: '', kind: 'list' }, ndjson);
     assert.match((await bad.text()).trim(), /^\{"type":"error","error":"Enter 1/);
-    const plain = await fetch('http://127.0.0.1:3098/api/kits', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
-    assert.deepEqual([plain.status, (await plain.json()).kind], [201, 'list']);
-  } finally { child.kill(); m.close(); await rm(dir, { recursive: true, force: true }); }
+    const plain = await c.json('/api/kits', 'POST', input);
+    assert.deepEqual([plain.status, plain.body.kind], [201, 'list']);
+  } finally { await s.stop(); m.close(); }
 });
