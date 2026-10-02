@@ -82,10 +82,7 @@ async function handleCreate(req, res, user, input) {
   try {
     if (streaming) res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
     // A palace is named by id and its places are read from this account's own saved palaces, never from the request.
-    const palace = input.palace ? (await store.palaces(user.id)).find(p => p.id === input.palace) : null;
-    if (input.palace && !palace) throw Error('That memory palace was not found.');
-    const kit = await createKit({ ...input, route: palace?.places }, event => { if (streaming) line({ type: 'step', ...event }); });
-    if (palace) kit.palace = { id: palace.id, name: palace.name };
+    const kit = await createKit({ ...input, palaces: await store.palaces(user.id), knows: (await store.profile(user.id)).knows }, event => { if (streaming) line({ type: 'step', ...event }); });
     if (input.photo) kit.photo = await store.savePhoto(user.id, kit, input.photo);
     await store.add(user.id, kit);
     if (!streaming) return send(res, 201, kit);
@@ -182,6 +179,7 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/api/me') return send(res, 200, { user });
       if (url.pathname === '/api/kits') return send(res, 200, await store.kits(user.id));
       if (url.pathname === '/api/palaces') return send(res, 200, await store.palaces(user.id));
+      if (url.pathname === '/api/profile') return send(res, 200, await store.profile(user.id));
       if (url.pathname === '/api/tracks') return send(res, 200, { tracks: TRACKS, daily: daily(today(url.searchParams.get('today'))), translations: TRANSLATIONS });
       if (url.pathname === '/api/calendar.ics') {
         res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="recall-practice.ics"', 'Cache-Control': 'no-store' });
@@ -211,6 +209,12 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { correct: majorMatches(words, digits), readings: words.map(w => ({ word: w, digits: majorReadings(w).slice(0, 4) })) });
     }
     if (url.pathname.startsWith('/api/palaces')) return await handlePalaces(req, res, user, url, b);
+    // Which encoding systems the learner already knows. Anything not answered true or false stays unknown.
+    if (req.method === 'POST' && url.pathname === '/api/profile') {
+      const knows = Object.fromEntries(['major', 'pegs', 'pao'].filter(k => typeof b.knows?.[k] === 'boolean').map(k => [k, b.knows[k]]));
+      await store.saveProfile(user.id, { knows });
+      return send(res, 200, { knows });
+    }
     if (req.method === 'POST' && url.pathname === '/api/kits/import') {
       const kit = importKit(b.kit, b.today);
       await store.add(user.id, kit);
