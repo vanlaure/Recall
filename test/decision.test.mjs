@@ -83,7 +83,8 @@ test('each technique\'s evidence is checked against the cue and the source', () 
 
   assert.deepEqual(issues('peg', ['1 speech', '2 arms'], [scene('1 speech', 'a bun speaks', { peg: 'bun' }), scene('2 arms', 'arms flex', { peg: 'shoe' })]), ['Scene 2: the cue does not name its peg, "shoe".']);
 
-  assert.deepEqual(issues('major', ['8472'], [scene('8472', 'a far ken', { words: ['far', 'ken'] })]), []);
+  assert.deepEqual(issues('major', ['8472'], [scene('8472', 'a far ken waves from a hill', { words: ['far', 'ken'] })]), []);
+  assert.match(issues('major', ['8472'], [scene('8472', 'a far ken', { words: ['far', 'ken'] })])[0], /little more than the encoding words/);
   assert.match(issues('major', ['8472'], [scene('8472', 'an octopus juggles', { words: ['octopus'] })])[0], /^Scene 1: the words "octopus" do not decode to 8472 \(their consonant sounds read as 7190\); use only words whose consonant sounds spell 8-4-7-2\.$/);
   assert.match(issues('major', ['8472'], [scene('8472', 'a blazing tin', { words: ['fire', 'can'] })])[0], /"fire" does not appear in the cue/);
 

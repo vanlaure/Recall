@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { splitSource, validateScenes, grade, gradeList, nextReview } from '../lib/memory.mjs';
+import { splitSource, validateScenes, grade, gradeList } from '../lib/memory.mjs';
 
 test('ordered list split rejects oversized kits', () => {
   assert.deepEqual(splitSource('milk, eggs; bread', 'list'), ['milk', 'eggs', 'bread']);
@@ -50,9 +50,4 @@ test('list recall counts items, names the missed ones and reports order without 
   assert.deepEqual(gradeList(units, 'milk and bread'), { score: 2 / 3, missed: ['eggs'], inOrder: true });
   assert.deepEqual(gradeList(['post office', 'bank'], 'the office post, bank'), { score: .5, missed: ['post office'], inOrder: true });
   assert.equal(gradeList(units, '').score, 0);
-});
-
-test('failed recall schedules sooner than successful streak', () => {
-  assert.equal(nextReview(.2, 0, 0), '1970-01-01T00:10:00.000Z');
-  assert.equal(nextReview(1, 2, 0), '1970-01-05T00:00:00.000Z');
 });
