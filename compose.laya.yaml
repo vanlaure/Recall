@@ -1,0 +1,16 @@
+# Laya decision service for Recall. Listens on http://127.0.0.1:8009 (loopback only).
+#   docker compose -f compose.laya.yaml up -d --build
+# Then set LAYA_BASE_URL=http://127.0.0.1:8009 in .env.
+services:
+  laya:
+    build: ./docker/laya
+    ports:
+      - "127.0.0.1:8009:8000"
+    environment:
+      LAYA_API_KEY: "${LAYA_API_KEY:-}"
+      LAYA_THREADS: "4"
+    volumes:
+      - laya-models:/home/laya/.cache/huggingface
+    restart: unless-stopped
+volumes:
+  laya-models:
