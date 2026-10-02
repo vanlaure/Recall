@@ -24,7 +24,8 @@ Optional technique selection with [Laya](https://github.com/NandhaKishorM/laya) 
 - Microphone recording (localhost/HTTPS), audio upload, server-side transcription and editable source confirmation.
 - Learning modules for everyday memory, school, college, medical study, Bible verses, older adults and speeches. Module choice informs prompts; this is not yet a distinct curriculum for each audience.
 - Technique selection by Laya (or the Nemotron Memory Expert as fallback), then Association/Storyboard and Rules agent calls orchestrated on the server, with up to three storyboard revisions when the Rules agent rejects. Source coverage, verbatim wording and order checked deterministically.
-- Scene prompts, individual actual image generation/regeneration, source text and cues beneath images.
+- Live agent progress: the studio shows each step (technique selection, storyboard, rules review, revisions) as the server streams it.
+- Scene prompts, image generation per scene or for the whole storyboard in one click, regeneration, source text and cues beneath images.
 - Persistent single-user kit library in `data/kits.json`, deletion, JSON export, visible agent trace.
 - Exact recall of a passage uses normalized word edit distance; a list is scored by items recalled, with missed items named and order reported but not penalised. Meaning recall uses an AI estimate. Reviews schedule the next practice date, and due kits are identified.
 - Technique catalog: loci, links, pegs, keyword, chunking, narrative, Major system, shape/rhyme, PAO, visual association.
