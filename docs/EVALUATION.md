@@ -26,6 +26,72 @@ Conclusion: Laya is right about three times in four on this material and is not 
 technique alone. The technique-family question and the yes/no questions are not used for selection. The yes/no
 answers are still asked and shown to the learner as supporting evidence.
 
+### Sensitivity to presentation, and calibration
+
+Measured on 2026-10-02 with `english` at revision `55cf4c4ebb4e` on CPU. The same recall-target question was asked
+again with the seven options in the opposite order, and again with the question reworded.
+
+| | dev | test |
+|---|---|---|
+| Original question: correct | 15/20 | 15/20 |
+| Options reversed: same answer as original | 11/20 | 10/20 |
+| Options reversed: correct | 9/20 | 10/20 |
+| Question reworded: same answer as original | 13/20 | 12/20 |
+| Question reworded: correct | 12/20 | 13/20 |
+| Correct when stated confidence is under 50% | 2/4 | 1/2 |
+| Correct when stated confidence is 50–80% | 4/6 | 5/7 |
+| Correct when stated confidence is 80% or more | 9/10 | 9/11 |
+
+Negation, over the five yes/no questions on every task (100 answers per split), each also asked as its opposite
+("Is this a single item, not a list of separate items?"):
+
+| | dev | test |
+|---|---|---|
+| Question as Recall asks it: correct | 79/100 | 81/100 |
+| Asked as the opposite: correct | 37/100 | 37/100 |
+| The two answers differ, as they should | 22/100 | 24/100 |
+
+The stock checkpoint gives the same answer to a question and its opposite about three times in four: it mostly
+answers "no" whichever way the question faces. Its yes/no answers are therefore shown as supporting evidence only
+and decide nothing.
+
+The stock checkpoint's answer changes on about half the tasks when only the order of the options changes. Its
+accuracy with the wording and order Recall uses was arrived at on the `dev` tasks, so part of the 15/20 belongs to
+that presentation rather than to the model's reading of the material. Stated confidence rises with accuracy but
+overstates it: 18 of 21 answers given at 80% or more were right.
+
+## Authority and promotion of a checkpoint
+
+Each kind of decision has a mode, set in configuration and recorded with every kit together with the checkpoint,
+its revision and its device:
+
+- `LAYA_TECHNIQUE_MODE` (default `enforced`): above the confidence bar and within the code facts, the recall-target
+  answer selects the technique. Supported by the pipeline table below. With `advisory`, the answer is recorded and
+  given to the Memory Expert, who chooses.
+- `LAYA_CUE_MODE` (default `advisory`): the cue check is recorded and shown. With `enforced`, a cue read as another
+  item is sent back once for rewriting, and the result is recorded as passed or unresolved. Not supported by any
+  measurement yet, so it stays advisory.
+
+- `LAYA_REPAIR_MODE` (default `advisory`): when a cue is rewritten after repeated misses, Laya reads the recorded
+  attempts and wrong answers and names the likely cause. It is stored beside Nemotron's diagnosis. With `enforced`,
+  and at or above the confidence bar, Laya's cause directs the rewrite. Not measured: there are no labelled
+  cue-failure cases yet. In one live rewrite Laya answered "weak link" at 27% where Nemotron said "cue ambiguity".
+
+One live run with the cue check enforced (seven errands on a route): six of seven cues were read back as their own
+item, the storyboard was sent back with the stray one named, and the rewritten storyboard passed seven of seven.
+That shows the loop works, not that the check is accurate.
+
+`npm run export:training` writes the labelled `dev` tasks (never `test`) in Laya's own labelled-dataset format
+(`{state, questions, expected, tags}` per line), checked with `laya-evals validate`. With `--kits <data folder>`
+it adds cue-to-item examples and recorded cue-rewrite causes from saved kits; those are learners' own material and
+weak labels, tagged as such. The Laya package installed here (0.3.23) contains evaluation and calibration tools
+but no training command, so whether the upstream training code takes this file unchanged has not been checked.
+
+A checkpoint trained on Recall's own questions and tasks is expected to do better than these numbers, and every
+decision it takes over from Nemotron removes a paid model call. The route to that is: serve the new checkpoint,
+run `npm run eval`, and change a mode only if the numbers for that checkpoint support it. The figures to beat are
+the ones above, option-order stability first. Tasks used to train a checkpoint must not be the `test` tasks here.
+
 ## The full selection pipeline
 
 1. The learner's own choice is honoured if the technique can represent the material, and refused with the reason

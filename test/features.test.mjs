@@ -4,7 +4,7 @@ import { splitSource } from '../lib/memory.mjs';
 import { createKit, reviewKit, repairScene, languageAids, importKit } from '../lib/orchestrate.mjs';
 import { parseQuotes, verseReference, research } from '../lib/research.mjs';
 import { TRACKS, daily } from '../lib/tracks.mjs';
-import { contractIssues } from '../lib/validate.mjs';
+import { contractIssues, contractFindings } from '../lib/validate.mjs';
 import { withMocks, mocks, compliant, listen, startServer, client } from './helpers.mjs';
 
 const VERSE = 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.';
@@ -62,12 +62,101 @@ test('a reference scene is rewritten under its own contract, and a content scene
 }));
 
 test('a saved palace fixes the route: its places are required in order, and too few places are refused first', () => withMocks({ laya: ['digits', .99] }, async m => {
-  await assert.rejects(createKit({ ...groceries, route: ['hall', 'sofa'] }), /This palace has 2 places and the material has 3 items/);
+  const palaces = [{ id: 'short', name: 'Flat', places: ['hall', 'sofa'] }, { id: 'home', name: 'Home', places: ['place a', 'place b', 'place c', 'place d'] }, { id: 'other', name: 'Office', places: ['hall', 'sofa', 'fridge'] }];
+  await assert.rejects(createKit({ ...groceries, palaces, palace: 'short' }), /This palace has 2 places and the material has 3 items/);
+  await assert.rejects(createKit({ ...groceries, palaces, palace: 'gone' }), /palace was not found/);
   assert.equal(m.calls.storyboard.length, 0);
-  const kit = await createKit({ ...groceries, route: ['place a', 'place b', 'place c', 'place d'] });
-  assert.deepEqual([kit.technique.technique, kit.technique.selectedBy, kit.contract.route], ['loci', 'learner', ['place a', 'place b', 'place c']]);
+  const kit = await createKit({ ...groceries, palaces, palace: 'home' });
+  assert.deepEqual([kit.technique.technique, kit.technique.selectedBy, kit.contract.route, kit.palace], ['loci', 'learner', ['place a', 'place b', 'place c'], { id: 'home', name: 'Home' }]);
   assert.match(kit.contract.evidence_required, /exactly the contract\.route place/);
-  await assert.rejects(createKit({ ...groceries, route: ['hall', 'sofa', 'fridge'] }), /evidence\.location must be the learner's own place for this scene, "hall"/);
+  await assert.rejects(createKit({ ...groceries, palaces, palace: 'other' }), /evidence\.location must be the learner's own place for this scene, "hall"/);
+}));
+
+test('when a route is chosen automatically, the learner\'s own long-enough palace is used, and the expert is told one exists', () => withMocks({ expert: { technique: 'loci', reason: 'a route helps.' } }, async m => {
+  const palaces = [{ id: 'short', name: 'Flat', places: ['hall', 'sofa'] }, { id: 'home', name: 'Home', places: ['place a', 'place b', 'place c'] }];
+  const kit = await createKit({ ...groceries, palaces });
+  assert.equal(m.calls.expert[0].learner.has_familiar_route, true);
+  assert.deepEqual([kit.technique.selectedBy, kit.contract.route, kit.palace.name], ['nemotron', ['place a', 'place b', 'place c'], 'Home']);
+  assert.match(kit.technique.reason, /a route helps\. Your saved palace “Home” is used as the route\./);
+  const none = await createKit({ ...groceries, palaces: palaces.slice(0, 1) });
+  assert.deepEqual([none.contract.route, none.palace, m.calls.expert[1].learner.has_familiar_route], [undefined, undefined, false]);
+}));
+
+test('each decision records the checkpoint, its revision and device, and the authority it had', () => withMocks({ laya: ['unordered_items', .9] }, async () => {
+  const d = (await createKit(groceries)).decision;
+  assert.deepEqual([d.checkpoint, d.repo, d.revision, d.device, d.modes, d.policy_version, d.question_version], ['english', 'test/laya', 'rev-1', 'cpu', { technique: 'enforced', cue_check: 'advisory', repair: 'advisory' }, '1', '1']);
+}));
+
+test('a contract failure is a record: the check, the scene, what was expected and observed, and the repair it needs', () => withMocks({ laya: ['digits', .9], storyboard: [s => { const b = compliant(s.contract); b.scenes[0].evidence.words = ['octopus']; b.scenes[0].cue = 'an octopus juggles on a ball'; b.scenes[1].prompt = 'a clock showing 3:16'; return b; }, null] }, async m => {
+  const kit = await createKit({ ...base, text: '8472, 1066', kind: 'list' });
+  const sent = m.calls.storyboard[1].findings;
+  assert.deepEqual(sent.map(f => [f.check, f.scene, f.repair]), [['technique.major', 1, 'fix_encoding'], ['image.prompt', 2, 'rewrite_prompt']]);
+  assert.match(sent[0].expected, /consonant sounds must spell exactly the digits/);
+  assert.match(sent[0].observed, /^the words "octopus" do not decode to 8472/);
+  assert.equal(kit.trace.find(t => t.agent === 'Contract check').output.findings[1].source, '1066');
+  assert.deepEqual(contractFindings(kit.contract, kit.scenes), []);
+}));
+
+test('a system the learner has not said they know is flagged for teaching, and one they do not know is not offered', () => withMocks({ expert: { technique: 'visual', reason: 'x' } }, async m => {
+  const digits = { ...base, text: '8472', kind: 'list' };
+  assert.deepEqual((await createKit(digits)).teach, { technique: 'major', name: 'Major system', known: 'unknown' });
+  assert.equal((await createKit({ ...digits, knows: { major: false } })).teach.known, 'no');
+  assert.equal((await createKit({ ...digits, knows: { major: true } })).teach, undefined);
+  assert.equal((await createKit({ ...digits, technique: 'major' })).teach, undefined, 'the learner\'s own choice is not second-guessed');
+  await createKit({ ...groceries, knows: { pegs: false, pao: true } });
+  const asked = m.calls.expert.at(-1);
+  assert.ok(!asked.catalog.some(t => t.id === 'peg') && asked.catalog.some(t => t.id === 'link'));
+  assert.deepEqual([asked.learner.knows_number_code, asked.learner.has_established_pegs, asked.learner.knows_person_action_object], ['unknown', false, true]);
+}));
+
+test('a cue rewrite records the decision model\'s reading of the cause, and follows it only when enforced', () => withMocks({ laya: ['unordered_items', .9] }, async m => {
+  const failing = async () => { const kit = await createKit(groceries); kit.scenes[1].stats = { attempts: 3, recalled: 1, unaided: 0, missStreak: 2, answers: ['cheese'] }; return kit; };
+  let kit = await failing();
+  const advisory = (await repairScene(kit, 1)).repair;
+  assert.match(m.calls.laya.at(-1).state, /^Source: eggs\nCue: .*\nAttempts: 3, recalled: 1, without hints: 0\nThe learner answered: cheese$/);
+  assert.deepEqual([advisory.diagnosedBy, advisory.diagnosis, advisory.decision.mode, typeof advisory.decision.choice, m.calls.repair[0].diagnosis_required], ['nemotron', 'cue_ambiguity', 'advisory', 'string', undefined]);
+  await withEnv({ LAYA_REPAIR_MODE: 'enforced' }, async () => {
+    kit = await failing();
+    const enforced = (await repairScene(kit, 1)).repair;
+    assert.deepEqual([enforced.diagnosedBy, enforced.diagnosis, m.calls.repair.at(-1).diagnosis_required], ['laya', enforced.decision.choice, enforced.decision.choice]);
+  });
+}));
+
+async function withEnv(vars, fn) {
+  Object.assign(process.env, vars);
+  try { return await fn(); } finally { for (const k of Object.keys(vars)) delete process.env[k]; }
+}
+
+test('in advisory mode the decision model\'s answer is recorded but the Memory Expert chooses', () => withEnv({ LAYA_TECHNIQUE_MODE: 'advisory' }, () => withMocks({ laya: ['unordered_items', .99], expert: { technique: 'story', reason: 'x' } }, async m => {
+  const kit = await createKit(groceries);
+  assert.deepEqual([kit.technique.technique, kit.technique.selectedBy, kit.decision.modes.technique, kit.decision.answers[0].answer], ['story', 'nemotron', 'advisory', 'unordered_items']);
+  assert.match(kit.technique.escalated, /advisory for technique selection; it answered "unordered_items" \(99%\)/);
+  assert.equal(m.calls.expert[0].diagnosis[0].answer, 'unordered_items');
+})));
+
+test('a decision made on truncated material is not used', () => withMocks({ laya: ['unordered_items', .99, 'truncated'] }, async () => {
+  const kit = await createKit(groceries);
+  assert.deepEqual([kit.technique.selectedBy, kit.decision.configured, kit.decision.answers], ['nemotron', true, []]);
+  assert.match(kit.decision.error, /truncated/);
+}));
+
+// A route cue that names an earlier item instead of its own.
+const strayCue = s => { const b = compliant(s.contract); b.scenes[1].cue = 'milk at place b'; return b; };
+test('an enforced cue check sends a stray cue back once, and records the outcome honestly', () => withEnv({ LAYA_CUE_MODE: 'enforced' }, async () => {
+  await withMocks({ laya: ['unordered_items', .9], storyboard: [strayCue, null] }, async m => {
+    const kit = await createKit({ ...groceries, technique: 'loci' });
+    assert.equal(m.calls.storyboard.length, 2);
+    assert.match(m.calls.storyboard[1].issues[0], /^Scene 2: read on its own, this cue points to "milk" rather than its own item, "eggs"/);
+    assert.deepEqual([kit.decision.cueCheck.advisory, kit.decision.cueCheck.status, kit.scenes[1].cue], [false, 'passed', 'cue for eggs at place b']);
+  });
+  await withMocks({ laya: ['unordered_items', .9], storyboard: [strayCue] }, async m => {
+    const kit = await createKit({ ...groceries, technique: 'loci' });
+    assert.deepEqual([m.calls.storyboard.length, kit.decision.cueCheck.status], [2, 'unresolved']);
+  });
+}));
+test('by default the cue check stays advisory and sends nothing back', () => withMocks({ laya: ['unordered_items', .9], storyboard: [strayCue] }, async m => {
+  const kit = await createKit({ ...groceries, technique: 'loci' });
+  assert.deepEqual([m.calls.storyboard.length, kit.decision.cueCheck.advisory, kit.decision.cueCheck.status, kit.contract.schema_version], [1, true, undefined, '1']);
 }));
 
 test('a face photo is read for a feature, and the name\'s cue must attach to it', () => withMocks({ laya: ['name_face', .9], face: ['round glasses', 'beard'] }, async m => {
@@ -189,13 +278,18 @@ test('the server saves palaces per account, runs the Major drill in code, import
     assert.match((await bob.json('/api/kits', 'POST', { ...groceries, palace: palace.id })).body.error, /palace was not found/);
     assert.equal((await alice.json('/api/palaces/' + palace.id, 'DELETE')).body.deleted, true);
     assert.equal((await alice.json('/api/palaces')).body.length, 0);
+    // Profile: only true/false answers are kept, per account, and they reach kit creation.
+    assert.deepEqual((await alice.json('/api/profile')).body, { knows: {} });
+    assert.deepEqual((await alice.json('/api/profile', 'POST', { knows: { major: true, pegs: 'yes', pao: false, other: true } })).body, { knows: { major: true, pao: false } });
+    assert.deepEqual([(await alice.json('/api/profile')).body.knows, (await bob.json('/api/profile')).body.knows], [{ major: true, pao: false }, {}]);
+    assert.deepEqual([(await alice.json('/api/kits', 'POST', { ...base, text: '8472', kind: 'list' })).body.teach, (await bob.json('/api/kits', 'POST', { ...base, text: '8472', kind: 'list' })).body.teach?.known], [undefined, 'unknown']);
     // Drill
     assert.deepEqual((await alice.json('/api/drill', 'POST', { digits: '316', words: 'my dish' })).body, { correct: true, readings: [{ word: 'my', digits: ['3'] }, { word: 'dish', digits: ['16'] }] });
     assert.equal((await alice.json('/api/drill', 'POST', { digits: '317', words: 'my dish' })).body.correct, false);
     assert.equal((await alice.json('/api/drill', 'POST', { digits: 'abc', words: 'my' })).status, 400);
     // Import
     const imported = await alice.json('/api/kits/import', 'POST', { kit, today: '2026-10-02' });
-    assert.deepEqual([imported.status, imported.body.id !== kit.id, (await alice.json('/api/kits')).body.length], [201, true, 2]);
+    assert.deepEqual([imported.status, imported.body.id !== kit.id, (await alice.json('/api/kits')).body.length], [201, true, 3]);
     assert.equal((await alice.json('/api/kits/import', 'POST', { kit: { nope: 1 } })).status, 400);
     // Face photo: stored as a file only its owner can load, and removed with the kit.
     const faceKit = (await alice.json('/api/kits', 'POST', { ...base, text: 'Dr. Okafor', kind: 'passage', photo: PHOTO })).body;

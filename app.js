@@ -7,6 +7,8 @@ async function api(path, method = 'GET', data) {
   const r = await fetch('/api/' + path, { method, headers: authHeaders(), ...(data ? { body: JSON.stringify(data) } : {}) });
   const b = await r.json();
   if (r.status === 401 && !['login', 'register', 'logout'].includes(path)) showAuth();
+  // A bare 'not found' means the server has no such route, which happens when it is running older code than this page.
+  if (r.status === 404 && /^(Route not|Not) found.$/.test(b.error)) throw Error('The server did not recognise this request. It may be running an older version: restart it, then refresh this page.');
   if (!r.ok) throw Error(b.error);
   return b;
 }
@@ -251,7 +253,12 @@ async function showStudio(user) {
   $('password').value = '';
   await library();
   nextDrill();
-  await Promise.all([loadPalaces(), loadTracks()]).catch(e => status(e.message));
+  // Each of these can fail on its own; say which one did, and keep the rest of the studio working.
+  await Promise.all([
+    loadPalaces().catch(() => status('Your saved memory palaces could not be loaded. Refresh the page to try again.')),
+    loadTracks().catch(() => status('Study tracks and Bible translations could not be loaded. Refresh the page to try again.')),
+    loadProfile().catch(() => status('What you already know could not be loaded. Refresh the page to try again.')),
+  ]);
 }
 async function authenticate(path) {
   const authStatus = s => $('auth-status').textContent = s;
@@ -378,7 +385,9 @@ function decisionPanel(k) {
     panel.append(table, el('p', 'The decision model is right about three times in four on our test material, so its answer is used only when it is confident and agrees with the facts.', 'built-with'));
   } else panel.append(el('p', d.error ? 'The decision model was unavailable.' : 'The decision model is not configured.'));
   if (k.contract) panel.append(el('p', 'Contract enforced by code: every scene keeps the source wording' + (k.contract.evidence_required === 'none' ? '' : ', supplies the ' + k.contract.name + ' evidence that code checks') + ', and no image prompt may ask for numerals, words, labels or logos.'));
-  if (d.cueCheck?.checks) panel.append(el('p', 'Cue check (advisory): ' + d.cueCheck.checks.filter(c => c.matches).length + ' of ' + d.cueCheck.checks.length + ' cues were read back as their own item.'));
+  if (d.cueCheck?.checks) panel.append(el('p', 'Cue check (' + (d.cueCheck.advisory === false ? 'enforced' + (d.cueCheck.status === 'unresolved' ? ', unresolved' : '') : 'advisory') + '): ' + d.cueCheck.checks.filter(c => c.matches).length + ' of ' + d.cueCheck.checks.length + ' cues were read back as their own item.'));
+  // Which checkpoint answered and how much say it had, so a kit can be traced to the model that decided it.
+  if (d.checkpoint) panel.append(el('p', 'Decision model: ' + d.checkpoint + (d.revision ? ' at revision ' + d.revision.slice(0, 12) : '') + (d.device ? ', running on ' + d.device : '') + '.' + (d.modes ? ' Authority: technique ' + d.modes.technique + ', cue check ' + d.modes.cue_check + (d.modes.repair ? ', cue rewrites ' + d.modes.repair : '') + '.' : ''), 'built-with'));
   return panel;
 }
 
@@ -415,6 +424,7 @@ function show(k) {
     const face = el('img'); face.src = k.photo; face.alt = 'Your photo for ' + k.title; face.className = 'face';
     wrap.append(face, el('p', k.face?.features?.length ? 'Feature the cue hooks onto: ' + k.face.features[0] + '.' : 'No feature was read from the photo, so the cue rests on the name alone.', 'built-with'));
   }
+  if (k.teach) wrap.append(el('p', 'These cues use the ' + k.teach.name + ', which you ' + (k.teach.known === 'no' ? 'have said you do not know' : 'have not said you know') + '. Learn it first' + (k.teach.technique === 'major' ? ' with the Major system drill on the Tools page' : '') + ', or choose another technique. You can record what you know under “What I already know” on the Tools page.', 'image-review warn'));
   if (k.decision) wrap.append(decisionPanel(k));
 
   const grid = el('div', null, 'scenes');
@@ -628,6 +638,24 @@ async function photoData(file) {
   canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
   canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', .85);
+}
+
+// What the learner already knows. A kit built on a system they have not said they know says it must be learnt first.
+const SYSTEMS = [['major', 'The Major system (digits as consonant sounds)'], ['pegs', 'A peg list (one is a bun, two is a shoe…)'], ['pao', 'Person-action-object for numbers']];
+async function loadProfile() {
+  const { knows } = await api('profile');
+  $('profile').replaceChildren(...SYSTEMS.map(([id, name]) => {
+    const label = el('label', name), select = el('select');
+    for (const [value, text] of [['', 'Not said'], ['true', 'I know it'], ['false', 'I do not know it']]) { const o = el('option', text); o.value = value; select.append(o); }
+    select.value = knows[id] === undefined ? '' : String(knows[id]);
+    select.dataset.system = id;
+    select.onchange = async () => {
+      const said = Object.fromEntries([...$('profile').querySelectorAll('select')].filter(s => s.value).map(s => [s.dataset.system, s.value === 'true']));
+      try { await api('profile', 'POST', { knows: said }); status('Saved. New kits will take this into account.'); } catch (e) { status(e.message); }
+    };
+    label.append(select);
+    return label;
+  }));
 }
 
 // Saved memory palaces: routes through places the learner already knows, reused from kit to kit.

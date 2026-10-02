@@ -76,7 +76,10 @@ export async function mocks({ laya, expert = { technique: 'visual', reason: 'def
     return [200, { choices: [{ message: { content: JSON.stringify(reply) } }] }];
   });
   const layaServer = laya ? await listen((url, body) => {
+    if (url === '/health') return [200, { status: 'ok', revisions: { english: 'rev-1' }, checkpoint_devices: { english: 'cpu' }, device: 'cpu' }];
     calls.laya.push(body);
+    // laya[2] === 'truncated' makes the service report that the material did not fit.
+    if (laya[2] === 'truncated') return [200, { answers: { target: { type: 'choice', choice: laya[0], answer_confidence: laya[1] }, ...Object.fromEntries(Object.keys(body.questions).filter(k => k !== 'target').map(k => [k, { noul: .1 }])) }, usage: { truncated: true }, routing: { model: 'english' } }];
     const answers = {};
     for (const [id, q] of Object.entries(body.questions)) {
       if (q.type === 'noul') answers[id] = { type: 'noul', noul: .1, confidence: .9 };
@@ -84,7 +87,7 @@ export async function mocks({ laya, expert = { technique: 'visual', reason: 'def
       // The cue check: answer with the first option whose text appears in the cue.
       else { const hit = Object.keys(q.criteria).find(k => body.state.includes(q.criteria[k])) || Object.keys(q.criteria)[0]; answers[id] = { type: 'choice', choice: hit, answer_confidence: .8, probabilities: {} }; }
     }
-    return [200, { answers, routing: { model: 'english' } }];
+    return [200, { answers, routing: { model: 'english', repo: 'test/laya' } }];
   }) : null;
   const env = { TEXT_PROVIDER: 'nebius', NEBIUS_BASE_URL: chat.url, NEBIUS_API_KEY: 'k', NEBIUS_MODEL: 'nvidia/test', LAYA_BASE_URL: layaServer?.url || '', LAYA_MIN_CONFIDENCE: '0.5', PROVIDER_RETRY_MS: '1', VISION_PROVIDER: '', NEBIUS_VISION_MODEL: vision ? 'vision/test' : '', ...(jpeg ? { IMAGE_BASE_URL: chat.url + '/genai', IMAGE_MODEL: 'vendor/model', IMAGE_API_KEY: 'k' } : {}) };
   return { calls, env, close: () => { chat.close(); layaServer?.close(); } };
