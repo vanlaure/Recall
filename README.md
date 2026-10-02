@@ -30,8 +30,21 @@ Optional decision model, [Laya](https://github.com/NandhaKishorM/laya) (Apache-2
 - Live agent progress: the studio shows each step (technique selection, storyboard, rules review, revisions) as the server streams it.
 - Scene prompts, image generation per scene or for the whole storyboard in one click, regeneration, source text and cues beneath images.
 - Accounts with a username and password. Each account has its own library in `data/users/<id>/` (kits in `kits.json`, images as files), which other accounts cannot read, change or delete. Deletion, JSON export, visible agent trace.
-- Exact recall of a passage uses normalized word edit distance; a list is scored by items recalled, with missed items named and order reported but not penalised. Meaning recall uses an AI estimate. Reviews schedule the next practice date, and due kits are identified.
+- Training plan: set the date you need a kit by and Recall plans practice sessions back from it (widening gaps, then a run-through and a final check). Without a date, the gap doubles after each good session. A "Today's practice" list and a month calendar show what is due and what was done; one link exports the coming sessions as a calendar file.
+- Guided practice: one item at a time from memory, with optional hints (picture, cue, first word). Recall without a hint is tracked separately from hinted recall. Free recall of the whole text is still available; a list is scored by items recalled and a passage by word edit distance, and meaning recall uses an AI estimate.
+- Cue repair: when an item is missed in two sessions running, Recall offers to rewrite its cue. Nemotron diagnoses the likely cause from the learner's wrong answers and writes a replacement, which code holds to the same technique contract.
+- Progress per kit: every session's score, and each item's attempts, recalls and unaided recalls.
 - Technique catalog: loci, links, pegs, keyword, chunking, narrative, Major system, shape/rhyme, PAO, visual association.
+- Research Agent: ask for "John 3:16", "a famous quote by Jim Croce" or "a line from Casablanca". Nemotron works out what to look up and which found quotations fit; it never supplies wording. Quotations are read from Wikiquote and chosen by number, each shown with its work, its stated source, whether the page files it as unsourced, disputed or misattributed, and a link to check it. Verses are retrieved from bible-api.com in a public-domain translation (KJV, WEB or ASV) without a model call. Wikiquote is community-edited, so the link is there to be followed. The citation stays with the kit only while the wording is unchanged.
+- Verse of the day and six study tracks: lists of references only; the wording is always retrieved.
+- Phrase beats: "Verse or quote, phrase by phrase" splits each sentence at its clauses in code, so one verse becomes several short scenes that are practised, tracked and repaired separately. The beats always join back to the exact source.
+- Reference scene: "Where it is from" gets a scene of its own under its own contract. Its numbers go through the Major system, which code decodes, and the cue must name the book, work or person. If no cue meets the contract in three attempts the kit is kept without one.
+- Names and faces: add a face photo with one name. A vision model names up to three neutral visible features and is told not to identify anyone; the cue must attach a sound-alike of the name to the first feature. The photo is resized in the browser, stored in the account's private library, shown as the question in practice and deleted with the kit. Generated images still never depict a real person.
+- Saved memory palaces: name a route and list its places once; a kit built on it must put scene 1 at the first place, scene 2 at the second, and so on, checked by code.
+- Practice also runs in reverse order and from first letters (which counts as a hint).
+- Major system drill: a number to put into words or a word to read as digits, checked by the same decoder that checks storyboards.
+- Original-language words for a verse kit: up to four key words with the Hebrew or Greek behind them. These come from Nemotron's own knowledge, are stored and shown as unverified, and link to an interlinear when the verse was retrieved; code keeps only words that are in the verse.
+- Print cards (the open kit's scenes) and import of a previously exported kit as a fresh kit without images or history.
 
 ## Scope and deployment
 
@@ -39,7 +52,7 @@ To host it, see [docs/DEPLOY.md](docs/DEPLOY.md): the repository includes a Dock
 
 This is a prototype, not a hardened production service. Provider keys stay server-side. Passwords are stored as salted scrypt hashes and sessions as SHA-256 hashes; the session cookie is HttpOnly and SameSite=Strict. The server binds to loopback by default: put it behind an HTTPS reverse proxy before remote access, and set `SIGNUP_CODE` so only invited people can create accounts and use your provider credits. There is no password reset or account deletion yet. Kit data is plain JSON on disk, not encrypted; back up the data directory. A library saved before accounts existed (`data/kits.json`) is moved into the first account created. Provider terms govern transmitted text/audio and generated images. Recording is limited to 60 seconds; uploaded audio is capped at 10 MB in the UI. Raw audio is not persisted by Recall.
 
-Generated images are mnemonic symbols, not verified medical diagrams. Bible users supply text they have permission to use. Scored scene rubrics, practice adaptation from recall errors, clarifying questions to the learner, advanced accessibility preferences, password reset, queues, encrypted storage and robust spaced-repetition calibration remain future work.
+Generated images are mnemonic symbols, not verified medical diagrams. Retrieved verses use public-domain translations only; Bible users who paste another translation supply text they have permission to use. Quotations may be in copyright (song lyrics, film lines): Recall retrieves them for the learner's own study and does not check rights. Scored scene rubrics, reminders and notifications, clarifying questions to the learner, advanced accessibility preferences, password reset, queues, encrypted storage and robust spaced-repetition calibration remain future work.
 
 ## Reuse and licenses
 

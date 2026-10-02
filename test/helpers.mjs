@@ -8,7 +8,7 @@ import { join } from 'node:path';
 export async function listen(handler) {
   const server = http.createServer(async (req, res) => {
     let s = ''; for await (const c of req) s += c;
-    const [status, body] = handler(req.url, JSON.parse(s));
+    const [status, body] = handler(req.url, JSON.parse(s || 'null'));
     res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body));
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
@@ -16,7 +16,7 @@ export async function listen(handler) {
 }
 
 // Major-system words that really decode to these digits, for storyboards that must pass the contract check.
-export const MAJOR_WORDS = { 8472: ['far', 'ken'], 1066: ['tea', 'sea', 'she', 'she'] };
+export const MAJOR_WORDS = { 8472: ['far', 'ken'], 1066: ['tea', 'sea', 'she', 'she'], 316: ['my', 'dish'] };
 
 // A storyboard that satisfies the contract it was given: correct sources, technique evidence and clean prompts.
 export function compliant(contract) {
@@ -29,7 +29,7 @@ export function compliant(contract) {
         major: { words: MAJOR_WORDS[digits] }, keyword: { keyword: 'soundalike' }, chunk: { chunks: [source.slice(0, 3), source.slice(3)] },
         shape: { pegs: [...digits].map(d => ({ digit: d, object: 'swan' })) }, pao: { person: 'pilot', action: 'juggling', object: 'lantern' },
       }[t] || {};
-      const extra = { link: next ? ' touching ' + next : '', loci: ' at place ' + 'abcdefgh'[i], peg: ' on hook' + 'abcdefgh'[i], major: ' ' + (MAJOR_WORDS[digits] || []).join(' '), keyword: ' soundalike', shape: ' swan', pao: ' pilot juggling lantern' }[t] || '';
+      const extra = { link: next ? ' touching ' + next : '', loci: ' at place ' + 'abcdefgh'[i], peg: ' on hook' + 'abcdefgh'[i], major: ' ' + (MAJOR_WORDS[digits] || []).join(' '), keyword: ' soundalike' + (contract.face_feature ? ' on the ' + contract.face_feature : ''), shape: ' swan', pao: ' pilot juggling lantern' }[t] || '';
       return { source, cue: 'cue for ' + source + extra, prompt: 'an ink drawing for scene ' + 'abcdefgh'[i], objects: ['thing ' + 'abcdefgh'[i]], evidence };
     }),
   };
@@ -40,14 +40,17 @@ export function compliant(contract) {
 // `laya` is [recallTarget, confidence], or omitted to leave the decision model unconfigured. `calls` records requests.
 // `vision` supplies the image inspector's reports in order; each is merged over a report that passes every rule.
 export const CLEAN = { visible_objects: ['thing'], text: 'not_detected', logo_or_brand: 'not_detected', real_person: 'not_detected', style: 'consistent', interaction: 'correct_action', clarity: 'clear' };
-export async function mocks({ laya, expert = { technique: 'visual', reason: 'default' }, storyboard, rules = [{ approved: true, issues: [] }], jpeg, vision = [{}] } = {}) {
-  const calls = { expert: [], storyboard: [], rules: [], laya: [], image: [], vision: [] };
+export async function mocks({ laya, expert = { technique: 'visual', reason: 'default' }, storyboard, rules = [{ approved: true, issues: [] }], jpeg, vision = [{}], repair, itemScores, face = ['curly hair'], lookup = { search: 'Jim Croce', topic: '' }, picks = [2], language = { words: [] } } = {}) {
+  const calls = { expert: [], storyboard: [], rules: [], laya: [], image: [], vision: [], repair: [], face: [], research: [] };
   const next = (list, n) => list[Math.min(n, list.length) - 1];
   const chat = await listen((url, body) => {
     if (url.startsWith('/genai/')) { calls.image.push(body); return [200, { artifacts: [{ base64: jpeg }] }]; }
     if (Array.isArray(body.messages[0].content)) {
       // The image inspector: by default every required object is reported present.
-      const text = body.messages[0].content[0].text, required = JSON.parse(text.match(/Required objects: (\[.*\])/)[1]);
+      const text = body.messages[0].content[0].text;
+      // The face reader sends a photo with no required objects.
+      if (!text.includes('Required objects: ')) { calls.face.push(body.messages[0].content[1].image_url.url); return [200, { choices: [{ message: { content: JSON.stringify({ features: face }) } }] }]; }
+      const required = JSON.parse(text.match(/Required objects: (\[.*\])/)[1]);
       calls.vision.push({ model: body.model, required, image: body.messages[0].content[1].image_url.url });
       const given = next(vision, calls.vision.length);
       const report = typeof given === 'string' ? given : JSON.stringify({ ...CLEAN, required: required.map(object => ({ object, present: true })), ...given });
@@ -61,6 +64,14 @@ export async function mocks({ laya, expert = { technique: 'visual', reason: 'def
       const make = storyboard ? next(storyboard, calls.storyboard.length) : null;
       reply = make ? make(state) : compliant(state.contract);
     } else if (role.startsWith('Rules Agent')) { calls.rules.push(state); reply = next(rules, calls.rules.length); }
+    else if (role.startsWith('Repair Agent')) {
+      // By default: a compliant replacement for the failing scene, worded differently from the original.
+      calls.repair.push(state);
+      const make = repair ? next(repair, calls.repair.length) : null, fresh = compliant(state.contract).scenes[state.scene_number - 1];
+      reply = make ? make(state, fresh) : { diagnosis: 'cue_ambiguity', explanation: 'The old picture could mean several things.', scene: { ...fresh, cue: 'fresh ' + fresh.cue } };
+    } else if (role.startsWith('Research Agent')) { calls.research.push(state); reply = role.includes('choose the quotations') ? { picks } : lookup; }
+    else if (role.startsWith('Language Agent')) reply = language;
+    else if (role.startsWith('Training Agent: for each item')) reply = { scores: itemScores || state.items.map(() => 1) };
     else reply = { score: .5, feedback: 'half' };
     return [200, { choices: [{ message: { content: JSON.stringify(reply) } }] }];
   });

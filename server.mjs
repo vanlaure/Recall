@@ -4,7 +4,12 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { techniques } from './lib/memory.mjs';
 import { transcribe, textProvider } from './lib/providers.mjs';
-import { createKit, reviewKit, illustrate } from './lib/orchestrate.mjs';
+import { randomUUID } from 'node:crypto';
+import { createKit, reviewKit, illustrate, setTarget, repairScene, languageAids, importKit } from './lib/orchestrate.mjs';
+import { research, TRANSLATIONS } from './lib/research.mjs';
+import { TRACKS, daily } from './lib/tracks.mjs';
+import { majorMatches, majorReadings } from './lib/validate.mjs';
+import { today, calendarFile } from './lib/schedule.mjs';
 import { visionModel } from './lib/vision.mjs';
 import { openAccounts, limiter } from './lib/accounts.mjs';
 import { openStore, contentType } from './lib/store.mjs';
@@ -16,7 +21,7 @@ const store = await openStore(dataDir);
 const limits = limiter();
 const HOUR = 3600000;
 // Per-account hourly allowances, so one login cannot exhaust the shared provider credits.
-const allowance = { storyboard: Number(process.env.LIMIT_STORYBOARDS_PER_HOUR || 30), image: Number(process.env.LIMIT_IMAGES_PER_HOUR || 150), transcribe: Number(process.env.LIMIT_TRANSCRIPTIONS_PER_HOUR || 60) };
+const allowance = { repair: Number(process.env.LIMIT_REPAIRS_PER_HOUR || 30), storyboard: Number(process.env.LIMIT_STORYBOARDS_PER_HOUR || 30), image: Number(process.env.LIMIT_IMAGES_PER_HOUR || 150), transcribe: Number(process.env.LIMIT_TRANSCRIPTIONS_PER_HOUR || 60), research: Number(process.env.LIMIT_RESEARCH_PER_HOUR || 40) };
 
 function send(res, status, data, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
@@ -76,7 +81,12 @@ async function handleCreate(req, res, user, input) {
   const line = obj => res.write(JSON.stringify(obj) + '\n');
   try {
     if (streaming) res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
-    const kit = await createKit(input, event => { if (streaming) line({ type: 'step', ...event }); });
+    // A palace is named by id and its places are read from this account's own saved palaces, never from the request.
+    const palace = input.palace ? (await store.palaces(user.id)).find(p => p.id === input.palace) : null;
+    if (input.palace && !palace) throw Error('That memory palace was not found.');
+    const kit = await createKit({ ...input, route: palace?.places }, event => { if (streaming) line({ type: 'step', ...event }); });
+    if (palace) kit.palace = { id: palace.id, name: palace.name };
+    if (input.photo) kit.photo = await store.savePhoto(user.id, kit, input.photo);
     await store.add(user.id, kit);
     if (!streaming) return send(res, 201, kit);
     line({ type: 'kit', kit });
@@ -106,11 +116,47 @@ async function handleKit(req, res, user, match, b) {
     return send(res, 200, scene);
   }
   if (req.method === 'POST' && match[2] === 'review') {
-    const review = await reviewKit(kit, b.answer);
+    const review = await reviewKit(kit, b);
     await store.save(user.id);
     return send(res, 200, review);
   }
+  if (req.method === 'POST' && match[2] === 'target') {
+    setTarget(kit, b.targetDate, b.today);
+    await store.save(user.id);
+    return send(res, 200, { targetDay: kit.targetDay || null, plan: kit.plan || [], dueDay: kit.dueDay, due: kit.due });
+  }
+  if (req.method === 'POST' && match[2] === 'repair') {
+    if (!limits.allow('repair:' + user.id, allowance.repair, HOUR)) fail('Hourly cue-rewrite limit reached. Try again later.', 429);
+    const result = await repairScene(kit, b.index);
+    await store.dropImage(user.id, result.oldImage);
+    await store.save(user.id);
+    return send(res, 200, { repair: result.repair, scene: result.scene });
+  }
+  if (req.method === 'POST' && match[2] === 'language') {
+    if (!limits.allow('repair:' + user.id, allowance.repair, HOUR)) fail('Hourly limit reached. Try again later.', 429);
+    const language = await languageAids(kit);
+    await store.save(user.id);
+    return send(res, 200, language);
+  }
   return send(res, 404, { error: 'Route not found.' });
+}
+
+// Saved memory palaces: a name and an ordered list of places the learner already knows.
+async function handlePalaces(req, res, user, url, b) {
+  const list = await store.palaces(user.id), id = url.pathname.split('/')[3];
+  if (req.method === 'DELETE' && id) {
+    await store.savePalaces(user.id, list.filter(p => p.id !== id));
+    return send(res, 200, { deleted: true });
+  }
+  if (req.method !== 'POST' || id) return send(res, 404, { error: 'Route not found.' });
+  const name = typeof b.name === 'string' ? b.name.trim().slice(0, 60) : '';
+  const places = (Array.isArray(b.places) ? b.places : []).filter(p => typeof p === 'string' && p.trim()).map(p => p.trim().slice(0, 60));
+  if (!name || places.length < 2 || places.length > 24) throw Error('Give the palace a name and 2 to 24 places, in the order you walk them.');
+  if (new Set(places.map(p => p.toLowerCase())).size !== places.length) throw Error('Each place in a palace must be different.');
+  if (list.length >= 20) throw Error('You can save up to 20 palaces. Delete one first.');
+  const palace = { id: randomUUID(), name, places };
+  await store.savePalaces(user.id, [...list, palace]);
+  return send(res, 201, palace);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -135,6 +181,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET') {
       if (url.pathname === '/api/me') return send(res, 200, { user });
       if (url.pathname === '/api/kits') return send(res, 200, await store.kits(user.id));
+      if (url.pathname === '/api/palaces') return send(res, 200, await store.palaces(user.id));
+      if (url.pathname === '/api/tracks') return send(res, 200, { tracks: TRACKS, daily: daily(today(url.searchParams.get('today'))), translations: TRANSLATIONS });
+      if (url.pathname === '/api/calendar.ics') {
+        res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="recall-practice.ics"', 'Cache-Control': 'no-store' });
+        return res.end(calendarFile(await store.kits(user.id), today(url.searchParams.get('today'))));
+      }
       const img = url.pathname.match(/^\/api\/images\/([^/]+)$/);
       const bytes = img && await store.readImage(user.id, img[1]);
       if (!bytes) return send(res, 404, { error: 'Not found.' });
@@ -148,8 +200,24 @@ const server = http.createServer(async (req, res) => {
       if (!limits.allow('transcribe:' + user.id, allowance.transcribe, HOUR)) fail('Hourly transcription limit reached. Try again later.', 429);
       return send(res, 200, { text: await transcribe(Buffer.from(b.audio, 'base64'), b.mime) });
     }
+    if (req.method === 'POST' && url.pathname === '/api/research') {
+      if (!limits.allow('research:' + user.id, allowance.research, HOUR)) fail('Hourly research limit reached. Try again later.', 429);
+      return send(res, 200, await research(b.query, b.translation));
+    }
+    // Major-system drill: are these words a reading of these digits? Checked by the same code that checks storyboards.
+    if (req.method === 'POST' && url.pathname === '/api/drill') {
+      const digits = String(b.digits ?? ''), words = String(b.words ?? '').trim().split(/\s+/).filter(Boolean);
+      if (!/^\d{1,8}$/.test(digits) || !words.length || words.length > 8 || !words.every(w => /^[\p{L}'-]{1,30}$/u.test(w))) throw Error('Answer with digits for the word, or one or more words for the number.');
+      return send(res, 200, { correct: majorMatches(words, digits), readings: words.map(w => ({ word: w, digits: majorReadings(w).slice(0, 4) })) });
+    }
+    if (url.pathname.startsWith('/api/palaces')) return await handlePalaces(req, res, user, url, b);
+    if (req.method === 'POST' && url.pathname === '/api/kits/import') {
+      const kit = importKit(b.kit, b.today);
+      await store.add(user.id, kit);
+      return send(res, 201, kit);
+    }
     if (req.method === 'POST' && url.pathname === '/api/kits') return await handleCreate(req, res, user, b);
-    const match = url.pathname.match(/^\/api\/kits\/([a-f0-9-]+)(?:\/(image|review))?$/);
+    const match = url.pathname.match(/^\/api\/kits\/([a-f0-9-]+)(?:\/(image|review|target|repair|language))?$/);
     if (match) return await handleKit(req, res, user, match, b);
     send(res, 404, { error: 'Route not found.' });
   } catch (e) {
