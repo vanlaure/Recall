@@ -1,11 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
 import { mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { startServer, client } from './helpers.mjs';
+import { startServer, client, mocks } from './helpers.mjs';
 
 test('server serves the studio, rejects cross-origin writes and requires a login', async () => {
   const s = await startServer(3097);
@@ -68,26 +67,11 @@ test('a sign-up code, when set, is required to create an account but not to log 
   } finally { await s.stop(); }
 });
 
-// Stand-ins for the text and image providers.
+// Stand-ins for the text and image providers; with no decision model configured, the Memory Expert picks.
 async function providers() {
   const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]).toString('base64');
-  const server = http.createServer(async (req, res) => {
-    let s = ''; for await (const c of req) s += c;
-    const body = JSON.parse(s);
-    let reply;
-    if (req.url.startsWith('/genai/')) reply = { artifacts: [{ base64: jpeg }] };
-    else {
-      const role = body.messages[0].content, state = JSON.parse(body.messages[1].content);
-      reply = role.startsWith('Memory Expert') ? { technique: 'link', reason: 'short list' }
-        : role.startsWith('Association') ? { scenes: state.units.map(u => ({ source: u, cue: 'cue ' + u, prompt: 'prompt ' + u })) }
-        : { approved: true, issues: [] };
-      reply = { choices: [{ message: { content: JSON.stringify(reply) } }] };
-    }
-    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(reply));
-  });
-  await new Promise(r => server.listen(0, '127.0.0.1', r));
-  const url = 'http://127.0.0.1:' + server.address().port;
-  return { env: { TEXT_PROVIDER: 'nebius', NEBIUS_BASE_URL: url, NEBIUS_API_KEY: 'k', NEBIUS_MODEL: 'nvidia/test', IMAGE_BASE_URL: url + '/genai', IMAGE_MODEL: 'vendor/model', IMAGE_API_KEY: 'k' }, jpeg, close: () => server.close() };
+  const m = await mocks({ jpeg, expert: { technique: 'link', reason: 'short list' } });
+  return { env: m.env, jpeg, close: m.close };
 }
 
 test('each account has its own library and images that other accounts cannot reach', async () => {
