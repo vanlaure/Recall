@@ -1,11 +1,12 @@
 const $ = id => document.getElementById(id);
-let token = '', current = null, recorder, stream;
+let current = null, recorder, stream;
 const status = s => $('status').textContent = s;
-const authHeaders = () => ({ 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) });
+const authHeaders = () => ({ 'Content-Type': 'application/json' });
 
 async function api(path, method = 'GET', data) {
   const r = await fetch('/api/' + path, { method, headers: authHeaders(), ...(data ? { body: JSON.stringify(data) } : {}) });
   const b = await r.json();
+  if (r.status === 401 && !['login', 'register', 'logout'].includes(path)) showAuth();
   if (!r.ok) throw Error(b.error);
   return b;
 }
@@ -30,13 +31,40 @@ async function library() {
   for (const k of kits) $('library').append(button(k.title + (Date.parse(k.due) <= Date.now() ? ' · Due' : ''), () => show(k)));
 }
 
+// Accounts: the studio stays hidden until someone is logged in; each account sees only its own library.
+function showAuth() {
+  $('studio').hidden = true; $('auth').hidden = false; $('logout').hidden = true; $('who').textContent = '';
+  $('kit').replaceChildren(); $('library').replaceChildren(); $('progress').replaceChildren();
+}
+async function showStudio(user) {
+  $('auth').hidden = true; $('studio').hidden = false; $('logout').hidden = false;
+  $('who').textContent = user.username;
+  $('password').value = '';
+  await library();
+}
+async function authenticate(path) {
+  const authStatus = s => $('auth-status').textContent = s;
+  try {
+    authStatus(path === 'register' ? 'Creating your account…' : 'Logging in…');
+    const r = await api(path, 'POST', { username: $('username').value, password: $('password').value, code: $('code').value });
+    authStatus('');
+    await showStudio(r.user);
+    if (r.adopted) status('Welcome. ' + r.adopted + ' kit(s) saved before accounts existed are now in your library.');
+  } catch (e) { authStatus(e.message); }
+}
+$('login').onsubmit = e => { e.preventDefault(); authenticate('login'); };
+$('do-register').onclick = () => { if ($('login').reportValidity()) authenticate('register'); };
+$('logout').onclick = async () => { try { await api('logout', 'POST', {}); } finally { showAuth(); } };
+
 async function init() {
   try {
     const c = await api('config');
     const text = c.text ? c.textProvider.model.split('/').pop() + ' via ' + c.textProvider.label : 'needs setup (' + c.textProvider.label + ')';
     $('config').textContent = `Text AI: ${text} · Images: ${c.images ? 'configured' : 'needs setup'} · Speech: ${c.voice ? 'configured' : 'needs setup'} · Laya: ${c.laya ? 'connected' : 'optional, not configured'}`;
     $('techniques').replaceChildren(...c.techniques.map(t => el('p', t[1] + ': ' + t[2])));
-    await library();
+    $('code').hidden = $('code-label').hidden = !c.signupCode;
+    const me = await fetch('/api/me');
+    if (me.ok) await showStudio((await me.json()).user); else showAuth();
   } catch (e) { status(e.message); }
 }
 
@@ -46,7 +74,6 @@ try {
   if (draft && !$('source').value) { $('source').value = draft; status('Loaded the draft you saved on the home page.'); }
 } catch {}
 
-$('access').onclick = () => { token = prompt('Application access token (kept in memory only):') || ''; init(); };
 $('refresh').onclick = () => library().catch(e => status(e.message));
 $('fresh').onclick = () => { current = null; $('kit').replaceChildren(); $('progress').replaceChildren(); $('source').value = ''; $('source').focus(); };
 
