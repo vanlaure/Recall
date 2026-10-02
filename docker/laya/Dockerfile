@@ -1,6 +1,7 @@
 # Self-hosted Laya decision service for Recall (CPU). Build and run with:
 #   docker compose -f compose.laya.yaml up -d --build
 # If your network intercepts TLS, drop the root certificate as a .crt file in docker/laya/certs/ first.
+# On Railway, deploy this folder as its own service (see docs/DEPLOY.md).
 FROM python:3.12-slim
 COPY certs/ /usr/local/share/ca-certificates/
 RUN update-ca-certificates
@@ -15,5 +16,9 @@ USER laya
 # The model cache volume inherits this directory's ownership on first use.
 RUN mkdir -p /home/laya/.cache/huggingface
 ENV LAYA_HOST=0.0.0.0 LAYA_PORT=8000 LAYA_DEVICE=cpu LAYA_MODELS=english LAYA_PRELOAD=1
+# Bake the model into the image, then run offline.
+COPY prefetch.py /tmp/prefetch.py
+RUN python /tmp/prefetch.py
+ENV HF_HUB_OFFLINE=1
 EXPOSE 8000
 CMD ["laya-serve"]

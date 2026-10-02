@@ -35,6 +35,8 @@ Optional decision model, [Laya](https://github.com/NandhaKishorM/laya) (Apache-2
 
 ## Scope and deployment
 
+To host it, see [docs/DEPLOY.md](docs/DEPLOY.md): the repository includes a Dockerfile and Railway configuration for the app, and a second container for the Laya decision model.
+
 This is a prototype, not a hardened production service. Provider keys stay server-side. Passwords are stored as salted scrypt hashes and sessions as SHA-256 hashes; the session cookie is HttpOnly and SameSite=Strict. The server binds to loopback by default: put it behind an HTTPS reverse proxy before remote access, and set `SIGNUP_CODE` so only invited people can create accounts and use your provider credits. There is no password reset or account deletion yet. Kit data is plain JSON on disk, not encrypted; back up the data directory. A library saved before accounts existed (`data/kits.json`) is moved into the first account created. Provider terms govern transmitted text/audio and generated images. Recording is limited to 60 seconds; uploaded audio is capped at 10 MB in the UI. Raw audio is not persisted by Recall.
 
 Generated images are mnemonic symbols, not verified medical diagrams. Bible users supply text they have permission to use. Scored scene rubrics, practice adaptation from recall errors, clarifying questions to the learner, advanced accessibility preferences, password reset, queues, encrypted storage and robust spaced-repetition calibration remain future work.
