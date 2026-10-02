@@ -66,6 +66,33 @@ Twelve live requests through the full workflow, one per technique plus two learn
 Before the contract existed, an unchecked run encoded 1066 as "tooth, sausage, sheep, sheep", which reads as
 11-00-6-6. The decoder now rejects that.
 
+## Image inspection
+
+After an image is generated, a vision model reports what it shows as typed fields (visible text, logos, a real or
+photographed person, style, each required object, the action, clarity), and code applies the image rules to that
+report (`lib/vision.mjs`). A rule-breaking image is regenerated with a correction aimed at what was wrong, at most
+three times, then kept and marked for the learner's review. Reproduce with `npm run eval:vision`.
+
+18 labelled checks on 16 images in `eval/images/`: nine acceptable illustrations, seven that break a rule (five
+generated to do so on purpose: a shop sign, numerals on a clock, a labelled jar, a photographed man, an oil
+painting), and two decoys that ask for an object the picture does not contain.
+
+| Vision model | Correct verdicts | Rule-breakers accepted | Good images rejected | Errors | Median time |
+|---|---|---|---|---|---|
+| `zai-org/GLM-5.3-Flash` on Nebius (default there) | 18/18 | 0 | 0 | 0 | 3.6 s |
+| `Qwen/Qwen3.8-27B` on Nebius | 17/18 | 0 | 0 | 1 unreadable report | 1.6 s |
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` on NVIDIA (default there) | 16/18 | 1 (numerals on a clock) | 0 | 1 provider 503 | 15.5 s |
+| `google/gemma-3-27b-it` on Nebius | 12/18 | 0 | 6 | 0 | 2.2 s |
+| `openbmb/MiniCPM-V-4_5` on Nebius | 6/18 | 0 | 9 | 3 | 0.8 s |
+
+A live run through the server with GLM-5.3-Flash, five storyboards and 13 images:
+
+- 10 images were accepted, 8 on the first attempt. Two were regenerated: one for visible text and a logo, one
+  for a missing object; both passed afterwards.
+- 1 was kept and marked for review after three attempts (the picture did not show the cue's action).
+- 2 were left unchecked: one provider timeout and one unreadable report.
+- 18 images were generated in total for the 13 scenes.
+
 ## Limits
 
 - The 40 tasks and the code rules were written by the same author in the same session, so the held-out set is not
@@ -78,6 +105,8 @@ Before the contract existed, an unchecked run encoded 1066 as "tooth, sausage, s
   judgement of cue ambiguity is a model opinion and was not measured.
 - The cue check (Laya reading each finished cue back to a source unit) is recorded and shown but not enforced,
   because of the accuracy above.
-- Generated images are not inspected. The image rules are enforced on the prompt only; checking pixels for stray
-  text, logos or wrong objects needs a vision model and is not built.
+- The image inspection was measured on 18 checks, most of them clear-cut. Subtle cases (faint lettering, a brand-like
+  shape, an object that is present but unrecognisable) are untested, and the "wrong action" judgement is a model
+  opinion that was not measured separately.
+- An image the inspector cannot read (timeout, malformed report) is kept and marked unchecked rather than blocked.
 - None of this measures whether learners remember more. No recall data has been collected.

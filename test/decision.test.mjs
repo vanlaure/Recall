@@ -69,7 +69,7 @@ test('the Major-system decoder accepts correct encodings and rejects extra or wr
   assert.deepEqual(majorReadings('church'), ['646', '647', '746', '747']);
 });
 
-const scene = (source, cue, evidence, prompt = 'an ink drawing') => ({ source, cue, prompt, evidence });
+const scene = (source, cue, evidence, prompt = 'an ink drawing') => ({ source, cue, prompt, objects: ['thing'], evidence });
 const issues = (id, units, scenes) => contractIssues(contract({ technique: id }, units, 'exact'), scenes);
 
 test('each technique\'s evidence is checked against the cue and the source', () => {
@@ -101,10 +101,12 @@ test('each technique\'s evidence is checked against the cue and the source', () 
 });
 
 test('image prompts that ask for numerals, words or logos are rejected', () => {
-  assert.deepEqual(promptIssues([{ prompt: 'a duck wearing a cooking pot' }, { prompt: 'three ducks and no words' }]), []);
-  assert.match(promptIssues([{ prompt: 'a clock showing 3:16' }])[0], /Scene 1: the image prompt contains numerals/);
-  assert.match(promptIssues([{ prompt: 'a jar labeled honey' }])[0], /asks for visible text or a logo \("labeled"\)/);
-  assert.match(promptIssues([{ prompt: 'a sign that says welcome' }])[0], /"sign that says"/);
-  assert.match(promptIssues([{ prompt: 'a can with a famous logo' }])[0], /"logo"/);
+  const p = prompt => promptIssues([{ prompt, objects: ['duck'] }]);
+  assert.deepEqual(promptIssues([{ prompt: 'a duck wearing a cooking pot', objects: ['duck'] }, { prompt: 'three ducks and no words', objects: ['duck'] }]), []);
+  assert.match(p('a clock showing 3:16')[0], /Scene 1: the image prompt contains numerals/);
+  assert.match(p('a jar labeled honey')[0], /asks for visible text or a logo \("labeled"\)/);
+  assert.match(p('a sign that says welcome')[0], /"sign that says"/);
+  assert.match(p('a can with a famous logo')[0], /"logo"/);
+  assert.match(promptIssues([{ prompt: 'a duck' }])[0], /Scene 1: objects is missing/);
   assert.equal(issues('visual', ['x'], [scene('x', 'cue', undefined, 'a banner reading sale and the number 5')]).length, 2);
 });

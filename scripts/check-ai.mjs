@@ -1,6 +1,6 @@
 // Live check of every configured AI provider. Run with `npm run check` after editing .env.
 // Never prints key values. Exits non-zero if a configured provider fails or text is unconfigured.
-import {agent,ask,image,transcribe,textProvider} from '../lib/providers.mjs';import {QUESTIONS,decisionState} from '../lib/decision.mjs';
+import {agent,ask,image,transcribe,textProvider} from '../lib/providers.mjs';import {QUESTIONS,decisionState} from '../lib/decision.mjs';import {inspect,verdict,visionModel} from '../lib/vision.mjs';let checkImage;
 const env=process.env,base=u=>u.replace(/\/$/,'');let failed=false;
 const ok=(name,msg)=>console.log('PASS  '+name+' — '+msg),skip=(name,msg)=>console.log('SKIP  '+name+' — '+msg),fail=(name,msg)=>{failed=true;console.log('FAIL  '+name+' — '+msg)};
 const set=k=>env[k]?'set':'missing';
@@ -20,7 +20,13 @@ else try{
 }catch(e){fail('text',e.message)}}
 // Images: optional. Scenes still get prompts and cues without it.
 if(!env.IMAGE_BASE_URL||!env.IMAGE_MODEL)skip('images','IMAGE_BASE_URL is '+set('IMAGE_BASE_URL')+', IMAGE_MODEL is '+set('IMAGE_MODEL')+'. Storyboards will have no pictures.');
-else try{const t=Date.now(),src=await image('A red apple wearing sunglasses, ink illustration on a white background.');ok('images',env.IMAGE_MODEL+' returned '+(src.startsWith('data:')?Math.round(src.length*.75/1024)+' KB inline':'an https URL')+' in '+(Date.now()-t)+' ms')}catch(e){fail('images',e.message)}
+else try{const t=Date.now(),src=await image('A red apple wearing sunglasses, ink illustration on a white background.');ok('images',env.IMAGE_MODEL+' returned '+(src.startsWith('data:')?Math.round(src.length*.75/1024)+' KB inline':'an https URL')+' in '+(Date.now()-t)+' ms');checkImage=src}catch(e){fail('images',e.message)}
+
+// Image inspection: optional. Looks at the image generated above and applies the image rules.
+const vm=visionModel();
+if(!vm)skip('vision','no vision model configured. Generated images will not be inspected.');
+else if(!checkImage)skip('vision','no image to inspect because the image check did not pass.');
+else try{const t=Date.now(),f=await inspect(checkImage,{objects:['apple'],cue:'an apple wearing sunglasses'}),v=verdict(f);ok('vision',vm.model+' on '+vm.label+' inspected the image in '+(Date.now()-t)+' ms: '+(v.action==='accept'?'accepted':'would regenerate ('+v.issues.join('; ')+')'))}catch(e){fail('vision',e.message)}
 
 // Speech: optional. Typed input works without it. Sends one second of silence to prove the endpoint accepts audio.
 if(!env.SPEECH_BASE_URL||!env.SPEECH_MODEL)skip('speech','SPEECH_BASE_URL is '+set('SPEECH_BASE_URL')+', SPEECH_MODEL is '+set('SPEECH_MODEL')+'. Recording and audio upload are disabled; typing still works.');

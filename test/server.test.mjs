@@ -86,6 +86,7 @@ test('each account has its own library and images that other accounts cannot rea
     // Images are stored as files in the owner's folder and served only to the owner.
     const scene = (await alice.json('/api/kits/' + kit.id + '/image', 'POST', { index: 0 })).body;
     assert.match(scene.image, /^\/api\/images\/[a-f0-9-]{36}-0-[a-f0-9]{8}\.jpg$/);
+    assert.deepEqual([scene.review.status, scene.review.attempts, scene.review.model], ['accepted', 1, 'vision/test']);
     const img = await alice.call(scene.image);
     assert.deepEqual([img.status, img.headers.get('content-type'), Buffer.from(await img.arrayBuffer()).toString('base64')], [200, 'image/jpeg', p.jpeg]);
     assert.equal((await bob.call(scene.image)).status, 404);
