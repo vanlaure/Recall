@@ -50,7 +50,9 @@ const sessionToken = req => (req.headers.cookie || '').split(';').map(c => c.tri
 const sessionCookie = (req, token, maxAge) => COOKIE + '=' + token + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=' + maxAge + (req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '');
 
 async function handleAuth(req, res, url, b) {
-  const ip = req.socket.remoteAddress;
+  // Behind a hosting proxy every request arrives from the proxy's address, so the caller is the last hop it recorded.
+  const forwarded = process.env.TRUST_PROXY ? String(req.headers['x-forwarded-for'] || '').split(',').pop().trim() : '';
+  const ip = forwarded || req.socket.remoteAddress;
   if (url.pathname === '/api/logout') {
     await accounts.logout(sessionToken(req));
     return send(res, 200, { loggedOut: true }, { 'Set-Cookie': sessionCookie(req, '', 0) });
