@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {splitSource,validateScenes,grade,nextReview} from '../lib/memory.mjs';
+test('ordered list split rejects oversized kits',()=>{assert.deepEqual(splitSource('milk, eggs; bread','list'),['milk','eggs','bread']);assert.throws(()=>splitSource(Array(25).fill('x').join(','),'list'))});
+test('verbatim coverage rejects rewritten or omitted source',()=>{assert.throws(()=>validateScenes([{source:'changed',cue:'x',prompt:'x'}],['original']));assert.throws(()=>validateScenes([],['original']));assert.equal(validateScenes([{source:'original',cue:'x',prompt:'x'}],['original'])[0].source,'original')});
+test('recall tracks omissions and order',()=>{assert.equal(grade('Milk, eggs!','milk eggs'),1);assert.ok(grade('milk eggs bread','milk')<.5);assert.ok(grade('milk eggs','eggs milk')<1)});
+test('failed recall schedules sooner than successful streak',()=>{assert.equal(nextReview(.2,0,0),'1970-01-01T00:10:00.000Z');assert.equal(nextReview(1,2,0),'1970-01-05T00:00:00.000Z')});
