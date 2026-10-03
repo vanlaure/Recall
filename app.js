@@ -1,6 +1,16 @@
 const $ = id => document.getElementById(id);
 let current = null, recorder, stream;
-const status = s => $('status').textContent = s;
+// The status line is a toast at the foot of the page: it clears itself after a while and on a click, so it never
+// sits over a control for long on a small screen.
+let statusTimer;
+const status = s => {
+  const box = $('status');
+  box.textContent = s;
+  clearTimeout(statusTimer);
+  if (s) statusTimer = setTimeout(() => { if (box.textContent === s) box.textContent = ''; }, 12000);
+};
+$('status').onclick = () => status('');
+$('status').title = 'Click to dismiss';
 const authHeaders = () => ({ 'Content-Type': 'application/json' });
 
 async function api(path, method = 'GET', data) {
@@ -279,21 +289,27 @@ async function init() {
     const c = await api('config');
     const text = c.text ? c.textProvider.model.split('/').pop() + ' via ' + c.textProvider.label : 'needs setup (' + c.textProvider.label + ')';
     $('config').textContent = `Text AI: ${text} · Images: ${c.images ? 'configured' + (c.vision ? ', checked by ' + c.vision.split('/').pop() : ', not inspected') : 'needs setup'} · Speech: ${c.voice ? 'configured' : 'needs setup'} · Laya: ${c.laya ? 'connected' : 'optional, not configured'}`;
+    // Platforms retire models without notice; the studio says so before a learner spends time on a storyboard that cannot be built.
+    if (c.text && c.textModelListed === false) {
+      $('config').className = 'image-review warn';
+      $('config').textContent += ` · WARNING: ${c.textProvider.model} is not in the ${c.textProvider.label} catalogue any more, so storyboards cannot be generated until ${c.textProvider.name === 'nebius' ? 'NEBIUS_MODEL' : 'NVIDIA_MODEL'} names a listed model.`;
+    }
     $('techniques').replaceChildren(...c.techniques.map(t => el('p', t[1] + ': ' + t[2])));
     $('code').hidden = $('code-label').hidden = !c.signupCode;
-    const me = await fetch('/api/me');
-    if (me.ok) await showStudio((await me.json()).user); else showAuth();
+    const me = await api('me');
+    if (me.user) await showStudio(me.user); else showAuth();
   } catch (e) { status(e.message); }
 }
 
 // The studio is a set of pages: Create, Library, the open Kit, Training and Tools. The navigation switches between
 // them; on a phone it is folded behind the Menu button.
 const VIEWS = ['create', 'library', 'kit', 'training', 'tools'];
-function setView(name) {
+// Each page change is a history entry, so the browser's Back button returns to the previous page of the studio.
+function setView(name, push = true) {
   const view = VIEWS.includes(name) && (name !== 'kit' || current) ? name : 'create';
   for (const v of VIEWS) $('view-' + v).hidden = v !== view;
   for (const a of document.querySelectorAll('#nav a')) a.setAttribute('aria-current', String(a.dataset.view === view));
-  if (location.hash.slice(1) !== view) history.replaceState(null, '', '#' + view);
+  if (location.hash.slice(1) !== view) history[push ? 'pushState' : 'replaceState'](null, '', '#' + view);
   setMenu(false);
 }
 function setMenu(open) {
@@ -302,8 +318,8 @@ function setMenu(open) {
 }
 $('menu').onclick = () => setMenu(!$('sidebar').classList.contains('open'));
 for (const a of document.querySelectorAll('#nav a')) a.onclick = e => { e.preventDefault(); setView(a.dataset.view); scrollTo(0, 0); };
-setView(location.hash.slice(1));
-addEventListener('hashchange', () => setView(location.hash.slice(1)));
+setView(location.hash.slice(1), false);
+addEventListener('hashchange', () => setView(location.hash.slice(1), false));
 
 // Carry over the quick draft saved on the landing page.
 try {
@@ -323,28 +339,38 @@ function showStep(step) {
   row.replaceChildren(el('strong', step.agent), el('span', step.status === 'started' ? ' working…' + (step.detail ? ' (' + step.detail + ')' : '') : ' ' + (step.detail || 'done')));
 }
 
-// Creates a kit while reading the server's line-by-line progress stream.
+// Creates a kit while reading the server's line-by-line progress stream. Stop closes the connection, which also stops
+// the server's provider calls; nothing is saved.
+let creating = null;
 async function createKit(input) {
-  const r = await fetch('/api/kits', { method: 'POST', headers: { ...authHeaders(), Accept: 'application/x-ndjson' }, body: JSON.stringify(input) });
-  if (!r.ok) throw Error((await r.json()).error);
-  const reader = r.body.getReader(), decoder = new TextDecoder();
-  let buffer = '', kit;
-  for (;;) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-    for (const text of lines.filter(Boolean)) {
-      const msg = JSON.parse(text);
-      if (msg.type === 'step') showStep(msg);
-      else if (msg.type === 'error') throw Error(msg.error);
-      else if (msg.type === 'kit') kit = msg.kit;
+  creating = new AbortController();
+  $('stop').hidden = false;
+  try {
+    const r = await fetch('/api/kits', { method: 'POST', headers: { ...authHeaders(), Accept: 'application/x-ndjson' }, body: JSON.stringify(input), signal: creating.signal });
+    if (!r.ok) throw Error((await r.json()).error);
+    const reader = r.body.getReader(), decoder = new TextDecoder();
+    let buffer = '', kit;
+    for (;;) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const text of lines.filter(Boolean)) {
+        const msg = JSON.parse(text);
+        if (msg.type === 'step') showStep(msg);
+        else if (msg.type === 'error') throw Error(msg.error);
+        else if (msg.type === 'kit') kit = msg.kit;
+      }
+      if (done) break;
     }
-    if (done) break;
-  }
-  if (!kit) throw Error('The server stopped before the storyboard was finished.');
-  return kit;
+    if (!kit) throw Error('The server stopped before the storyboard was finished.');
+    return kit;
+  } catch (e) {
+    if (e.name === 'AbortError') throw Error('Stopped. Nothing was saved.');
+    throw e;
+  } finally { $('stop').hidden = true; creating = null; }
 }
+$('stop').onclick = () => creating?.abort();
 
 $('create').onsubmit = async e => {
   e.preventDefault();
@@ -412,8 +438,10 @@ function show(k) {
   setView('kit');
   const wrap = $('kit');
   wrap.replaceChildren();
-  wrap.append(el('h2', k.title), el('p', (k.technique.name || k.technique.technique) + ' · ' + k.technique.reason));
+  wrap.append(el('h1', k.title), el('p', (k.technique.name || k.technique.technique) + ' · ' + k.technique.reason));
   if (k.ai) wrap.append(el('p', 'Built with ' + k.ai.model + ' on ' + k.ai.platform + '.', 'built-with'));
+  // What the agents could not settle: a reference scene left out, or a storyboard kept over the reviewer's reservations.
+  for (const note of k.notes || []) wrap.append(el('p', '⚠ ' + note, 'image-review warn'));
   if (k.reference || k.citation) {
     const from = el('p', k.reference ? 'From: ' + k.reference + '. ' : '');
     if (k.citation) from.append(link('Check the wording at its source', k.citation.url), el('span', k.citation.label ? ' (' + k.citation.label + ')' : ''));
@@ -430,7 +458,7 @@ function show(k) {
   const grid = el('div', null, 'scenes');
   k.scenes.forEach((s, i) => {
     const card = el('article', null, 'scene');
-    card.append(el('h3', s.role === 'reference' ? 'Reference' : 'Scene ' + (i + 1)));
+    card.append(el('h2', s.role === 'reference' ? 'Reference' : 'Scene ' + (i + 1)));
     if (s.image) { const img = el('img'); img.src = s.image; img.alt = s.cue; card.append(img); if (s.review) card.append(reviewLine(s.review)); }
     else card.append(el('p', 'Image not generated yet.', 'placeholder'));
     card.append(el('p', s.source, 'source'), el('p', s.cue, 'cue'));
@@ -497,7 +525,7 @@ function tabify(wrap) {
   }
   let inHead = true;
   for (const node of nodes) {
-    if (inHead && node.matches('h2, p, img.face')) { head.append(node); continue; }
+    if (inHead && node.matches('h1, h2, p, img.face')) { head.append(node); continue; }
     inHead = false;
     const tab = node.matches('.plan, .review') ? 'practise' : node.matches('details.progress') ? 'progress' : node.matches('details, button') ? 'details' : 'storyboard';
     if (tab !== 'storyboard' && node.matches('details')) node.open = true;
@@ -538,6 +566,7 @@ async function transcribe(blob) {
     f.onerror = reject; f.onload = () => resolve(f.result.split(',')[1]); f.readAsDataURL(blob);
   });
   const r = await api('transcribe', 'POST', { audio: data, mime: blob.type.split(';')[0] });
+  if (!r.text) { status('No words were heard in that audio. Try again closer to the microphone, or type the words.'); return; }
   $('source').value = r.text;
   status('Transcription ready. Please correct any errors.');
 }

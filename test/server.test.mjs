@@ -14,7 +14,8 @@ test('server serves the studio, rejects cross-origin writes and requires a login
     assert.equal((await fetch(s.base + '/api/kits', { method: 'POST', headers: { Origin: 'https://evil.example' }, body: '{}' })).status, 403);
     const config = await (await fetch(s.base + '/api/config')).json();
     assert.deepEqual([config.text, config.signupCode, config.textProvider.name], [false, false, 'nebius']);
-    for (const [path, method] of [['/api/kits', 'GET'], ['/api/me', 'GET'], ['/api/kits', 'POST'], ['/api/transcribe', 'POST'], ['/api/images/x.jpg', 'GET']]) {
+    assert.deepEqual(await (await fetch(s.base + '/api/me')).json(), { user: null }, 'who-am-i answers without an error when nobody is logged in');
+    for (const [path, method] of [['/api/kits', 'GET'], ['/api/kits', 'POST'], ['/api/transcribe', 'POST'], ['/api/images/x.jpg', 'GET']]) {
       assert.equal((await fetch(s.base + path, { method, ...(method === 'POST' ? { body: '{}' } : {}) })).status, 401, method + ' ' + path);
     }
     // Logged in but with no text provider configured, creation explains what is missing.
@@ -52,7 +53,7 @@ test('accounts: sign-up rules, login, logout and sessions that survive a restart
     assert.equal((await fetch(s.base + '/api/me', { headers: { Cookie: c.cookie() } })).status, 200, 'session survives a restart');
     assert.equal((await again.login('alice')).status, 200);
     assert.equal((await again.call('/api/logout', 'POST', {})).status, 200);
-    assert.equal((await again.call('/api/me')).status, 401);
+    assert.deepEqual(await (await again.call('/api/me')).json(), { user: null });
   } finally { await s.stop(); }
 });
 

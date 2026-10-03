@@ -18,6 +18,24 @@ Visit http://localhost:3000 for the landing page and http://localhost:3000/app f
 
 Optional decision model, [Laya](https://github.com/NandhaKishorM/laya) (Apache-2.0): run `docker compose -f compose.laya.yaml up -d --build` and set `LAYA_BASE_URL=http://127.0.0.1:8009`. Laya answers typed questions about the material in one forward pass on CPU. It does not choose alone: on our labelled tasks it is right about three times in four, so code decides what it can determine exactly, Laya's answer is used only above `LAYA_MIN_CONFIDENCE` and never against those facts, and otherwise the Nemotron Memory Expert chooses. `npm run eval` reproduces the measurements in [docs/EVALUATION.md](docs/EVALUATION.md). Laya's authority is set per kind of decision (`LAYA_TECHNIQUE_MODE`, `LAYA_CUE_MODE`, `LAYA_REPAIR_MODE`: `enforced` or `advisory`), and every kit records the checkpoint, its revision, its device and the mode in force, so a checkpoint trained on Recall's own tasks can be evaluated and given more authority through configuration. A decision made on truncated material is discarded. `npm run export:training` writes labelled decisions in Laya's dataset format for training or calibrating a checkpoint, leaving out the held-out test tasks. A contract failure goes back to the generating agent as a record (check, scene, expected, observed, kind of repair). Under "What I already know" on the Tools page a learner records whether they know the Major system, a peg list or person-action-object; a kit that needs one they have not said they know says so, and the Memory Expert is not offered one they have said they do not know.
 
+## How Nemotron and Token Factory are used
+
+Every language-model call Recall makes runs on **NVIDIA Nemotron 3 Super 120B** (`nvidia/nemotron-3-super-120b-a12b`) through **Nebius Token Factory** (`TEXT_PROVIDER=nebius`, the default). There are six agent roles, all on that one model:
+
+- **Memory Expert** chooses a technique when the facts read by code and the decision model cannot settle it.
+- **Storyboard Agent** writes one scene per item against a contract that code then checks (exact wording, technique evidence, image rules); failures go back with the specific violation.
+- **Rules Agent** reviews cue ambiguity after the code checks pass.
+- **Repair Agent** diagnoses a cue the learner keeps missing and rewrites it under the same contract.
+- **Research Agent** works out what to look up and which found quotations fit; it never supplies wording.
+- **Language Agent** names the Hebrew or Greek behind key words of a verse, shown as unverified.
+- **Training Agent** scores meaning-based recall.
+
+Token Factory is also where image inspection runs (`zai-org/GLM-5.3-Flash`). Token Factory has no image or speech endpoints, so images (`black-forest-labs/flux.2-klein-4b`) and speech (NVIDIA Riva `parakeet-tdt-0.6b-v2`) use NVIDIA's hosted API. The optional Laya decision model is self-hosted and makes typed pre-decisions so that fewer paid calls are needed.
+
+Each saved kit records the platform and model that built it, the decision model's answers and confidence, and every contract check, so what the models decided and what code refused is visible in the studio under "How this technique was chosen" and "Agent workflow".
+
+**Model lifecycle.** Platforms retire models without notice: NVIDIA's own API dropped `nemotron-3-super` on 2026-10-03 with nothing but a 410 on every call. The studio header now warns when the configured model is no longer in its platform's catalogue, `npm run check` fails the same way, and `.env.example` names the fallback (`nvidia/Nemotron-3-Ultra-550b-a55b` on Nebius). Run `npm run check` before any demo.
+
 ## Implemented workflows
 
 - Responsive black landing page with supplied illustrative examples and motion controls.
@@ -50,17 +68,17 @@ Optional decision model, [Laya](https://github.com/NandhaKishorM/laya) (Apache-2
 
 To host it, see [docs/DEPLOY.md](docs/DEPLOY.md): the repository includes a Dockerfile and Railway configuration for the app, and a second container for the Laya decision model.
 
-This is a prototype, not a hardened production service. Provider keys stay server-side. Passwords are stored as salted scrypt hashes and sessions as SHA-256 hashes; the session cookie is HttpOnly and SameSite=Strict. The server binds to loopback by default: put it behind an HTTPS reverse proxy before remote access, and set `SIGNUP_CODE` so only invited people can create accounts and use your provider credits. There is no password reset or account deletion yet. Kit data is plain JSON on disk, not encrypted; back up the data directory. A library saved before accounts existed (`data/kits.json`) is moved into the first account created. Provider terms govern transmitted text/audio and generated images. Recording is limited to 60 seconds; uploaded audio is capped at 10 MB in the UI. Raw audio is not persisted by Recall.
+This is a prototype, not a hardened production service. Provider keys stay server-side. Passwords are stored as salted scrypt hashes and sessions as SHA-256 hashes; the session cookie is HttpOnly and SameSite=Strict. The server binds to loopback by default: put it behind an HTTPS reverse proxy before remote access, and set `SIGNUP_CODE` so only invited people can create accounts and use your provider credits. There is no password reset or account deletion yet. The server writes one JSON line per API request to stdout (never a body or key) and a `X-Request-Id` on every response; a generation can be stopped from the studio, which also stops the provider calls. Kit data is plain JSON on disk, not encrypted; back up the data directory. A library saved before accounts existed (`data/kits.json`) is moved into the first account created. Provider terms govern transmitted text/audio and generated images. Recording is limited to 60 seconds; uploaded audio is capped at 10 MB in the UI. Raw audio is not persisted by Recall.
 
 Generated images are mnemonic symbols, not verified medical diagrams. Retrieved verses use public-domain translations only; Bible users who paste another translation supply text they have permission to use. Quotations may be in copyright (song lyrics, film lines): Recall retrieves them for the learner's own study and does not check rights. Scored scene rubrics, reminders and notifications, clarifying questions to the learner, advanced accessibility preferences, password reset, queues, encrypted storage and robust spaced-repetition calibration remain future work.
 
 ## Reuse and licenses
 
-Concepts were informed by the owner's Memory-App and Bible-Verse-Memory-Tool. This implementation is written afresh; no source files from those private repositories are copied. User-supplied demonstration illustrations are excluded from the MIT code license pending redistribution/provenance review. No expert endorsement or guaranteed memory outcome is claimed. Provider/model licenses are separate from our code license.
+Concepts were informed by the owner's Memory-App and Bible-Verse-Memory-Tool. This implementation is written afresh; no source files from those private repositories are copied. The demonstration illustrations are excluded from the MIT code licence (see `NOTICE.md`); their provenance and the terms of every runtime source are recorded in `docs/ASSET-LICENSES.md`. No expert endorsement or guaranteed memory outcome is claimed. Provider/model licenses are separate from our code license.
 
 ## Hackathon
 
-Before submission: validate live NVIDIA/Nebius calls using the chosen model, publish licensed source, provide a hosted/test demo and required public video, and document development/reuse. Configuration adapters alone do not establish eligibility. Current code is locally tested; live paid/provider calls have not been tested without keys.
+The submission checklist, testing instructions, description draft and video script are in `docs/SUBMISSION.md`; feedback on the tools is in `docs/TOOL-FEEDBACK.md`; dated changes are in `docs/CHANGES.md`. Judges need an account: set `SIGNUP_CODE` on the hosted demo and give the code in the testing instructions. Live calls to Nebius Token Factory, the NVIDIA API and Laya were exercised end to end on 2026-10-03.
 
 Official rules: https://nebiusglobalaihackathon.devpost.com/rules
 Nebius API: https://docs.tokenfactory.nebius.com/api-reference/introduction
