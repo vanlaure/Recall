@@ -8,7 +8,8 @@ import { join } from 'node:path';
 export async function listen(handler) {
   const server = http.createServer(async (req, res) => {
     let s = ''; for await (const c of req) s += c;
-    const [status, body] = handler(req.url, JSON.parse(s || 'null'));
+    let status = 404, body = { error: 'no such mock route' };
+    try { [status, body] = handler(req.url, JSON.parse(s || 'null')); } catch {}
     res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body));
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
@@ -40,8 +41,8 @@ export function compliant(contract) {
 // `laya` is [recallTarget, confidence], or omitted to leave the decision model unconfigured. `calls` records requests.
 // `vision` supplies the image inspector's reports in order; each is merged over a report that passes every rule.
 export const CLEAN = { visible_objects: ['thing'], text: 'not_detected', logo_or_brand: 'not_detected', real_person: 'not_detected', style: 'consistent', interaction: 'correct_action', clarity: 'clear' };
-export async function mocks({ laya, expert = { technique: 'visual', reason: 'default' }, storyboard, rules = [{ approved: true, issues: [] }], jpeg, vision = [{}], repair, itemScores, face = ['curly hair'], lookup = { search: 'Jim Croce', topic: '' }, picks = [2], language = { words: [] } } = {}) {
-  const calls = { expert: [], storyboard: [], rules: [], laya: [], image: [], vision: [], repair: [], face: [], research: [] };
+export async function mocks({ laya, expert = { technique: 'visual', reason: 'default' }, storyboard, rules = [{ approved: true, issues: [] }], jpeg, vision = [{}], repair, itemScores, face = ['curly hair'], lookup = { search: 'Jim Croce', topic: '' }, picks = [2], language = { words: [] }, nonwords = [] } = {}) {
+  const calls = { expert: [], storyboard: [], rules: [], laya: [], image: [], vision: [], repair: [], face: [], research: [], wordcheck: [] };
   const next = (list, n) => list[Math.min(n, list.length) - 1];
   const chat = await listen((url, body) => {
     if (url.startsWith('/genai/')) { calls.image.push(body); return [200, { artifacts: [{ base64: jpeg }] }]; }
@@ -71,6 +72,8 @@ export async function mocks({ laya, expert = { technique: 'visual', reason: 'def
       reply = make ? make(state, fresh) : { diagnosis: 'cue_ambiguity', explanation: 'The old picture could mean several things.', scene: { ...fresh, cue: 'fresh ' + fresh.cue } };
     } else if (role.startsWith('Research Agent')) { calls.research.push(state); reply = role.includes('choose the quotations') ? { picks } : lookup; }
     else if (role.startsWith('Language Agent')) reply = language;
+    // The word check: every encoding word is a real word unless the test names it in `nonwords`.
+    else if (role.startsWith('Word check')) { calls.wordcheck.push(state.words); reply = { real: Object.fromEntries(state.words.map(w => [w, !nonwords.includes(w)])) }; }
     else if (role.startsWith('Training Agent: for each item')) reply = { scores: itemScores || state.items.map(() => 1) };
     else reply = { score: .5, feedback: 'half' };
     return [200, { choices: [{ message: { content: JSON.stringify(reply) } }] }];
@@ -103,7 +106,7 @@ export async function withMocks(script, fn) {
 export async function startServer(port, env = {}, dir) {
   const dataDir = dir || await mkdtemp(join(tmpdir(), 'recall-test-'));
   const child = spawn(process.execPath, ['server.mjs'], {
-    env: { ...process.env, TEXT_PROVIDER: '', NEBIUS_API_KEY: '', NEBIUS_MODEL: '', LAYA_BASE_URL: '', SIGNUP_CODE: '', IMAGE_BASE_URL: '', IMAGE_MODEL: '', VISION_PROVIDER: '', NEBIUS_VISION_MODEL: '', ...env, PORT: String(port), DATA_DIR: dataDir },
+    env: { ...process.env, TEXT_PROVIDER: '', NEBIUS_API_KEY: '', NEBIUS_MODEL: '', LAYA_BASE_URL: '', SIGNUP_CODE: '', IMAGE_BASE_URL: '', IMAGE_MODEL: '', VISION_PROVIDER: '', NEBIUS_VISION_MODEL: '', LOG_REQUESTS: '0', MODEL_CHECK: '0', LIMIT_KITS_PER_ACCOUNT: '', ...env, PORT: String(port), DATA_DIR: dataDir },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await new Promise((resolve, reject) => { child.stdout.once('data', resolve); child.once('error', reject); child.once('exit', () => reject(Error('Server exited early'))); });

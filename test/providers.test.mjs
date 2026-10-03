@@ -29,7 +29,7 @@ const chat = content => [200, { choices: [{ message: { content } }] }];
 test('text provider defaults to Nebius and switches to NVIDIA', () => withEnv({ NEBIUS_API_KEY: 'n', NEBIUS_MODEL: 'nvidia/x', NVIDIA_API_KEY: 'v' }, () => {
   assert.deepEqual([textProvider().name, textProvider().label, textProvider().model], ['nebius', 'Nebius Token Factory', 'nvidia/x']);
   process.env.TEXT_PROVIDER = 'NVIDIA';
-  assert.deepEqual([textProvider().name, textProvider().base, textProvider().model], ['nvidia', 'https://integrate.api.nvidia.com/v1', 'nvidia/nemotron-3-super-120b-a12b']);
+  assert.deepEqual([textProvider().name, textProvider().base, textProvider().model], ['nvidia', 'https://integrate.api.nvidia.com/v1', 'nvidia/nemotron-3-ultra-550b-a55b']);
   process.env.TEXT_PROVIDER = 'openai';
   assert.throws(() => textProvider(), /must be "nebius" or "nvidia"/);
 }));

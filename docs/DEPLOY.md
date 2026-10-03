@@ -17,7 +17,7 @@ What was verified locally with Docker on 2026-10-02, and what was not:
 
 1. In Railway: **New Project → Deploy from GitHub repo** and pick this repository. Railway reads `railway.json`,
    builds the `Dockerfile` and checks `/api/config` for health.
-2. **Add a volume** to the service, mounted at `/data`. Without it, every redeploy erases all accounts and kits.
+2. **Add a volume** to the service, mounted at `/data`. Without it, every redeploy erases all accounts and kits. The container runs as the unprivileged `node` user (uid 1000); if the volume is not writable by it, the server logs "The data directory /data is not writable" at start.
 3. **Set the variables** (Service → Variables). Railway provides `PORT` itself; do not set `HOST`, `PORT` or
    `DATA_DIR`, the image already does.
 
