@@ -6,7 +6,7 @@ import { techniques } from './lib/memory.mjs';
 import { transcribe, textProvider, requestContext, modelListed } from './lib/providers.mjs';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { createKit, reviewKit, illustrate, setTarget, repairScene, languageAids, importKit } from './lib/orchestrate.mjs';
-import { research, TRANSLATIONS } from './lib/research.mjs';
+import { research, TRANSLATIONS, tavilyConfigured } from './lib/research.mjs';
 import { TRACKS, daily } from './lib/tracks.mjs';
 import { majorMatches, majorReadings } from './lib/validate.mjs';
 import { today, calendarFile } from './lib/schedule.mjs';
@@ -209,7 +209,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/config') {
       const p = textProvider();
       const textModelListed = process.env.MODEL_CHECK === '0' ? null : await modelListed(p);
-      return send(res, 200, { text: !!(p.key && p.model), textProvider: { name: p.name, label: p.label, model: p.model }, textModelListed, images: !!process.env.IMAGE_MODEL, vision: visionModel()?.model || null, voice: !!process.env.SPEECH_MODEL, laya: !!process.env.LAYA_BASE_URL, signupCode: !!process.env.SIGNUP_CODE, techniques });
+      return send(res, 200, { text: !!(p.key && p.model), textProvider: { name: p.name, label: p.label, model: p.model }, textModelListed, images: !!process.env.IMAGE_MODEL, vision: visionModel()?.model || null, voice: !!process.env.SPEECH_MODEL, laya: !!process.env.LAYA_BASE_URL, tavily: tavilyConfigured(), signupCode: !!process.env.SIGNUP_CODE, techniques });
     }
     if (req.method === 'POST' && ['/api/register', '/api/login', '/api/logout'].includes(url.pathname)) return await handleAuth(req, res, url, await body(req));
 

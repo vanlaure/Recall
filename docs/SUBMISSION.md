@@ -16,6 +16,7 @@ Official rules: https://nebiusglobalaihackathon.devpost.com/rules
 | Working demo URL | Not started (deployment deliberately deferred to save credits) | Deploy per `docs/DEPLOY.md`; set `SIGNUP_CODE`; create a judge account |
 | Text description | Draft below | Paste into Devpost; adjust length to the form |
 | Demo video, under 3 minutes, public on YouTube, no third-party trademarks or music | Not started | Record after the demo is deployed; script below |
+| Best Use of Tavily bonus ($3,000; stacks with a track award) | Done in code: the Research Agent makes a runtime Tavily search call to find the Wikiquote page for a quotation and to name a described Bible passage; wording still comes from the source (README "How Tavily is used") | Set `TAVILY_API_KEY` on the hosted demo; show "Find it" with a described verse in the video; tick the Tavily bonus on the form |
 | Feedback on Token Factory and NVIDIA tools | Draft in `docs/TOOL-FEEDBACK.md` | Paste into the feedback section of the form |
 | Testing instructions with credentials if login is required | Template below | Fill in the URL and the sign-up code or judge account |
 | Explanation of what was built during the period | `docs/CHANGES.md` | — |
@@ -33,6 +34,8 @@ Create an account with the sign-up code: <code>   (or log in as judge / <passwor
 4. Miss the same item in two sessions and press "Rewrite this cue" to see the repair agent diagnose and rewrite it.
 5. Tools: save a memory palace, then create a list kit with it selected; every scene lands on your own route.
 6. Create: "Find it" with "John 3:16" retrieves the verse from a public-domain translation with a citation.
+7. Create: "Find it" with "the verse about God loving the world". Tavily web search names the passage (the card says
+   so and links where), and the wording is fetched from the public-domain translation, never from the search result.
 Text generation runs on Nebius Token Factory (nvidia/nemotron-3-super-120b-a12b); images and speech on NVIDIA's
 hosted API; image inspection on Nebius (zai-org/GLM-5.3-Flash). Images and speech use a free developer key with
 rate limits; if an image fails, text and practice keep working.

@@ -625,6 +625,13 @@ async function find(query) {
     box.append(card);
   }
   box.append(el('p', r.kind === 'verse' ? 'Verse wording is retrieved from a public-domain translation.' : 'Wording is read from Wikiquote, which anyone can edit. Follow the link to confirm it before you memorise it.', 'built-with'));
+  // Tavily located the page or named the passage; the wording above still comes from the source itself.
+  if (r.found_by === 'tavily') {
+    const how = el('p', null, 'built-with');
+    how.append(el('span', r.kind === 'verse' ? 'Tavily web search identified this passage as ' + r.looked_up + (r.identified_at ? ' (' : '.') : 'Tavily web search found the page for “' + r.looked_up + '”; the Research Agent chose these lines from it.'));
+    if (r.kind === 'verse' && r.identified_at) how.append(link(new URL(r.identified_at).host, r.identified_at), el('span', ').'));
+    box.append(how);
+  }
   status('');
 }
 $('find-go').onclick = () => find($('find').value).catch(e => status(e.message));
