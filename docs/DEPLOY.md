@@ -33,6 +33,7 @@ What was verified locally with Docker on 2026-10-02, and what was not:
    | `SPEECH_MODEL` | `nvidia/parakeet-tdt-0.6b-v2` |
    | `SPEECH_FUNCTION_ID` | `d3fe9151-442b-4204-a70d-5fcc597fd610` |
    | `NEBIUS_VISION_MODEL` | `zai-org/GLM-5.3-Flash` |
+   | `EVAL_PUBLIC_USERS` | comma-separated usernames whose refusal records `/eval` shows in full, such as `demo`; everyone else appears as counts only |
    | `SIGNUP_CODE` | a code of your choosing; give it to the judges. Without it anyone can sign up and spend your credits. |
 
 4. **Generate a domain** (Service → Settings → Networking). Railway serves it over HTTPS; the app then marks its

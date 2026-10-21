@@ -34,6 +34,12 @@ Token Factory is also where image inspection runs (`zai-org/GLM-5.3-Flash`). Tok
 
 Each saved kit records the platform and model that built it, the decision model's answers and confidence, and every contract check, so what the models decided and what code refused is visible in the studio under "How this technique was chosen" and "Agent workflow".
 
+### Checking the work without taking our word for it
+
+- **`/eval`** (public, no login, no scripts): every live benchmark run; counts of what code refused across all accounts (no wording leaves a library); and the full refusal record, reason by reason, for the accounts the owner publishes with `EVAL_PUBLIC_USERS`.
+- **Live benchmark** (studio, Tools): five tasks drawn at random from the held-out test set in `eval/technique-samples.json` go through the same workflow as Create; code scores technique choice, contract compliance and attempts, beside the numbers in `docs/EVALUATION.md`. Every run is logged on `/eval`, failures included. Capped by `BENCHMARK_PER_HOUR` (server, default 6) and `BENCHMARK_PER_ACCOUNT_PER_HOUR` (default 2).
+- **Export audit JSON** (each kit): a receipt built by the server from the kit's own records: who chose the technique and why, the contract, the decision model's answers, and every storyboard, image and cue refusal with its reason (`lib/audit.mjs`).
+
 **Model lifecycle.** Platforms retire models without notice: NVIDIA's own API dropped `nemotron-3-super` on 2026-10-03 with nothing but a 410 on every call. The studio header now warns when the configured model is no longer in its platform's catalogue, `npm run check` fails the same way, and `.env.example` names the fallback (`nvidia/Nemotron-3-Ultra-550b-a55b` on Nebius). Run `npm run check` before any demo.
 
 ## Implemented workflows

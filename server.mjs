@@ -13,12 +13,16 @@ import { today, calendarFile } from './lib/schedule.mjs';
 import { visionModel } from './lib/vision.mjs';
 import { openAccounts, limiter } from './lib/accounts.mjs';
 import { openStore, contentType } from './lib/store.mjs';
+import { receipt, totals } from './lib/audit.mjs';
+import { pick, runBenchmark, benchmarkLog, PUBLISHED, TASKS } from './lib/benchmark.mjs';
+import { evalPage } from './lib/evalpage.mjs';
 
 const root = new URL('./', import.meta.url);
 const dataDir = process.env.DATA_DIR ? pathToFileURL(resolve(process.env.DATA_DIR) + '/') : new URL('data/', root);
 const accounts = await openAccounts(dataDir);
 const store = await openStore(dataDir);
 const limits = limiter();
+const benchmarks = benchmarkLog(dataDir);
 const HOUR = 3600000;
 // Per-account hourly allowances, so one login cannot exhaust the shared provider credits.
 const allowance = { repair: Number(process.env.LIMIT_REPAIRS_PER_HOUR || 30), storyboard: Number(process.env.LIMIT_STORYBOARDS_PER_HOUR || 30), image: Number(process.env.LIMIT_IMAGES_PER_HOUR || 150), transcribe: Number(process.env.LIMIT_TRANSCRIPTIONS_PER_HOUR || 60), research: Number(process.env.LIMIT_RESEARCH_PER_HOUR || 40) };
@@ -184,6 +188,46 @@ async function handlePalaces(req, res, user, url, b) {
   return send(res, 201, palace);
 }
 
+// The live benchmark: TASKS held-out tasks through the full workflow, streamed like a storyboard, then logged for /eval.
+// It spends as much as TASKS storyboards, so it has its own allowance per account and a cap for the whole server.
+async function handleBenchmark(req, res, user) {
+  if (busy.has(user.id)) return send(res, 429, { error: 'A generation is already running. Please wait.' });
+  const p = textProvider();
+  if (!p.key || !p.model) fail('No text model is configured on this server.', 400);
+  if (!limits.check('benchmark', Number(process.env.BENCHMARK_PER_HOUR || 6), HOUR)) fail('The server has run its benchmarks for this hour. Try again later, or see past runs at /eval.', 429);
+  if (!limits.allow('benchmark:' + user.id, Number(process.env.BENCHMARK_PER_ACCOUNT_PER_HOUR || 2), HOUR)) fail('You have run the benchmark twice this hour. Past runs are at /eval.', 429);
+  limits.hit('benchmark');
+  busy.add(user.id);
+  const line = obj => { if (!res.destroyed) res.write(JSON.stringify(obj) + '\n'); };
+  const control = new AbortController(), ctx = { signal: control.signal, calls: 0 };
+  res.on('close', () => { if (!res.writableFinished) control.abort(); });
+  try {
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+    const knows = (await store.profile(user.id)).knows;
+    const run = await requestContext.run(ctx, async () => runBenchmark(await pick(TASKS), line, { knows }));
+    await benchmarks.add({ ...run, by: user.username });
+    evalCache = null;
+    line({ type: 'done', run });
+  } catch (e) {
+    line({ type: 'error', error: e.aborted ? 'Stopped.' : e.message });
+  } finally { busy.delete(user.id); res.end(); }
+}
+
+// The public evaluation page. Rebuilt at most once a minute, since it reads every library.
+let evalCache = null;
+async function handleEval(res) {
+  if (!evalCache || Date.now() - evalCache.at > 60000) {
+    const all = [];
+    for (const id of await store.userIds()) all.push(...await store.kits(id));
+    const names = String(process.env.EVAL_PUBLIC_USERS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const records = [];
+    for (const username of names) { const id = accounts.idOf(username); if (id) records.push({ username, kits: (await store.kits(id)).slice(0, 30) }); }
+    evalCache = { at: Date.now(), html: evalPage({ totals: totals(all), records, runs: await benchmarks.read(), published: PUBLISHED, model: textProvider().model || 'not configured' }) };
+  }
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" });
+  res.end(evalCache.html);
+}
+
 // Errors thrown on purpose carry a plain message for the learner; anything else is a programming fault whose detail
 // belongs in the log, not in the response.
 const INTERNAL = e => e instanceof TypeError || e instanceof RangeError || e instanceof ReferenceError || e instanceof SyntaxError;
@@ -200,6 +244,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   res.on('finish', () => { if (url.pathname.startsWith('/api/')) log({ id, method: req.method, path: url.pathname, status: res.statusCode, ms: Date.now() - started, ...(user ? { user: user.id } : {}) }); });
   try {
+    if (req.method === 'GET' && (url.pathname === '/eval' || url.pathname === '/eval/')) return await handleEval(res);
     if (!url.pathname.startsWith('/api/')) return await serveStatic(url, res);
     const { origin, host } = req.headers;
     if (req.method !== 'GET' && origin && origin !== `http://${host}` && origin !== `https://${host}`) return send(res, 403, { error: 'Cross-origin request rejected.' });
@@ -226,6 +271,12 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/api/calendar.ics') {
         res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="recall-practice.ics"', 'Cache-Control': 'no-store' });
         return res.end(calendarFile(await store.kits(user.id), today(url.searchParams.get('today'))));
+      }
+      const audit = url.pathname.match(/^\/api\/kits\/([a-f0-9-]+)\/audit$/);
+      if (audit) {
+        const kit = (await store.kits(user.id)).find(k => k.id === audit[1]);
+        if (!kit) return send(res, 404, { error: 'Kit not found.' });
+        return send(res, 200, receipt(kit), { 'Content-Disposition': 'attachment; filename="recall-audit-' + kit.id + '.json"' });
       }
       const img = url.pathname.match(/^\/api\/images\/([^/]+)$/);
       const bytes = img && await store.readImage(user.id, img[1]);
@@ -265,6 +316,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 201, kit);
     }
     if (req.method === 'POST' && url.pathname === '/api/kits') return await handleCreate(req, res, user, b);
+    if (req.method === 'POST' && url.pathname === '/api/benchmark') return await handleBenchmark(req, res, user);
     const match = url.pathname.match(/^\/api\/kits\/([a-f0-9-]+)(?:\/(image|review|target|repair|language))?$/);
     if (match) return await handleKit(req, res, user, match, b);
     send(res, 404, { error: 'Route not found.' });

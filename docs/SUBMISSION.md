@@ -38,6 +38,15 @@ hosted API; image inspection on Nebius (zai-org/GLM-5.3-Flash). Images and speec
 rate limits; if an image fails, text and practice keep working.
 ```
 
+Judge verifiability (add to the testing instructions once deployed):
+
+```
+8. Tools, Live benchmark: runs 5 held-out tasks through the full workflow and scores them in code beside the
+   published numbers (a few minutes). Every run, including failures, is listed at https://<your-domain>/eval.
+9. Any kit: "Export audit JSON" downloads a receipt of every decision and every refusal, with reasons.
+10. https://<your-domain>/eval needs no login: what the code refused, and why.
+```
+
 ## Project description (draft)
 
 **Recall** turns words you need to remember into illustrated memory storyboards, then trains you on them.
