@@ -4,6 +4,8 @@ WORKDIR /app
 COPY package.json server.mjs index.html app.html app.js app.css ./
 COPY lib ./lib
 COPY assets ./assets
+# The held-out test tasks the live benchmark draws from (docs/EVALUATION.md).
+COPY eval/technique-samples.json ./eval/
 # Accounts, kits and images live in DATA_DIR; mount a volume there so they survive redeploys. The directory is owned
 # by the unprivileged `node` user the server runs as; a named Docker volume inherits that ownership on first use.
 # RECALL_CONTAINER tells the server to bind every interface even if an env file sets HOST to a loopback address.

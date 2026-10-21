@@ -12,6 +12,18 @@ Global AI Hackathon submission period (26 August to 30 October 2026); the reposi
   where it named a passage. If Tavily is not configured or does not answer, the previous Wikiquote search is used.
   Tests in `test/features.test.mjs`, including that a snippet's paraphrase never reaches the result.
 
+## 2026-10-21: judge verifiability
+
+- **Public evaluation page (`/eval`).** No login and no scripts. Lists every live benchmark run; counts what code
+  refused across all accounts (storyboards sent back by check, images redrawn, cues rewritten) without showing any
+  wording; and shows the full refusal record for accounts named in `EVAL_PUBLIC_USERS` (`lib/evalpage.mjs`).
+- **Live benchmark.** Studio, Tools: five tasks at random from the held-out test split run through `createKit`, scored
+  by code for technique choice, contract compliance and attempts, beside the numbers in `docs/EVALUATION.md`. Not saved
+  to the library; logged to `DATA_DIR/benchmarks.json` (last 50) and shown on `/eval` (`lib/benchmark.mjs`).
+- **Export audit JSON.** Each kit can download a receipt built by the server from the kit's own trace, image reviews
+  and repairs (`GET /api/kits/:id/audit`, `lib/audit.mjs`).
+- The Docker image now carries `eval/technique-samples.json`. Tests in `test/verifiability.test.mjs`.
+
 ## 2026-10-03 — fixes from the end-to-end audit
 
 Found by running the whole product against the live providers (`Recall-E2E-Test-Report-2026-10-03`, kept outside the
