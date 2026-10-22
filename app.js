@@ -617,6 +617,12 @@ async function toWav(blob) {
   } finally { ctx.close(); }
 }
 
+// Speech recognition writes "John 3 16" or "John chapter 3 verse 16" where a reference needs "John 3:16", so a spoken
+// reference is put back into that form. Only a real book name is touched, so ordinary numbers in speech are left alone.
+const BOOKS = 'Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|(?:[12] )?Samuel|(?:[12] )?Kings|(?:[12] )?Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|(?:[12] )?Corinthians|Galatians|Ephesians|Philippians|Colossians|(?:[12] )?Thessalonians|(?:[12] )?Timothy|Titus|Philemon|Hebrews|James|(?:[12] )?Peter|(?:[123] )?John|Jude|Revelation';
+const SPOKEN_REF = new RegExp('\\b(' + BOOKS + '),?\\s+(?:chapter\\s+)?(\\d{1,3})(?:\\s*[,.:]\\s*|\\s+(?:verses?\\s+)?)(\\d{1,3})(?:\\s*(?:-|to|through)\\s*(\\d{1,3}))?\\b', 'gi');
+const spokenReferences = text => text.replace(SPOKEN_REF, (m, book, ch, v, to) => book.replace(/\b[a-z]/g, c => c.toUpperCase()) + ' ' + ch + ':' + v + (to ? '-' + to : ''));
+
 async function transcribe(blob) {
   if (blob.size > 10000000) throw Error('Audio must be under 10 MB.');
   status('Transcribing audio. Review the words before creating.');
@@ -630,7 +636,7 @@ async function transcribe(blob) {
   });
   const r = await api('transcribe', 'POST', { audio: data, mime: blob.type.split(';')[0] });
   if (!r.text) { status('No words were heard in that audio. Try again closer to the microphone, or type the words.'); return; }
-  $('source').value = [$('source').value.trim(), r.text].filter(Boolean).join(' ');
+  $('source').value = [$('source').value.trim(), spokenReferences(r.text)].filter(Boolean).join(' ');
   status('Transcription ready. Please correct any errors.');
 }
 
