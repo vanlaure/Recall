@@ -372,24 +372,57 @@ async function createKit(input) {
 }
 $('stop').onclick = () => creating?.abort();
 
+// Once a kit is saved the form starts empty for the next one: the words, the retrieved quotation and its citation, the
+// source, the photo and the options a quotation filled in. The translation the learner chose is kept.
+function clearCreateForm() {
+  const translation = $('translation').value;
+  $('create').reset();
+  $('translation').value = translation;
+  $('track').value = '';
+  $('found').replaceChildren();
+  try { localStorage.removeItem('recall-draft'); } catch {}
+}
+
+// One box takes whatever the learner wants to memorise. Either it is a request ("John 3:16", "a famous quote by Jim
+// Croce", "a line from Casablanca"), which the Research Agent resolves to real wording, or it is the material itself.
+const VERSE_REF = /\b(?:[1-3] )?[A-Z][a-z]+(?: of [A-Z][a-z]+)? \d{1,3}:\d{1,3}/;
+const ASKS_FOR = /\b(?:quotes?|quotations?|lines?|lyrics?|sayings?|verses?|speech)\s+(?:by|from|about|of)\b|\b(?:quotes?|quotation|bible)\b/i;
+const isRequest = text => text.length <= 200 && !text.includes('\n') && (VERSE_REF.test(text) || ASKS_FOR.test(text));
+// Material made of short items (a comma or line separated list) is a list; anything else is read as a passage.
+function guessKind(text) {
+  const items = text.split(text.includes('\n') ? '\n' : /[,;]/).map(s => s.trim()).filter(Boolean);
+  return items.length >= 2 && items.every(i => i.split(/\s+/).length <= 4) && !/[.!?]\s/.test(text) ? 'list' : 'passage';
+}
+
 $('create').onsubmit = async e => {
   e.preventDefault();
+  const text = $('source').value.trim();
+  if (!text) return;
+  $('found').replaceChildren();
+  if (!isRequest(text)) return build(text);
+  $('generate').disabled = true;
+  try { await find(text, { auto: true }); } catch (err) { status(err.message); } finally { $('generate').disabled = false; }
+};
+
+// Builds and saves the kit. `quote` is a retrieved verse or quotation, which brings its citation and its phrase-by-phrase
+// reading; otherwise the kind of material is the learner's choice under More options, or guessed from the words.
+async function build(text, quote) {
   $('generate').disabled = true;
   $('progress').replaceChildren();
   $('kit').replaceChildren();
+  $('found').replaceChildren();
   status('Memory agents are building and reviewing your storyboard…');
   try {
-    const file = $('photo').files[0], text = $('source').value;
-    // A citation stays with the kit only while the wording is still exactly what was retrieved.
-    const citation = found && found.text === text.trim() ? { url: found.url, label: [found.attribution, found.work, found.source].filter(Boolean).join(' · '), interlinear: found.interlinear } : undefined;
-    const k = await createKit({ text, kind: $('kind').value, module: $('module').value, mode: $('mode').value, absurdity: $('absurdity').value, technique: $('technique').value, targetDate: $('target').value, today: localDay(),
-      reference: $('reference').value, palace: $('palace').value, ...(file ? { photo: await photoData(file) } : {}), ...(citation ? { citation } : {}) });
-    $('photo').value = '';
+    const file = $('photo').files[0];
+    const citation = quote ? { url: quote.url, label: [quote.attribution, quote.work, quote.source].filter(Boolean).join(' · '), interlinear: quote.interlinear } : undefined;
+    const k = await createKit({ text, kind: quote ? 'phrases' : $('kind').value || guessKind(text), module: quote?.verse ? 'Bible verses' : $('module').value, mode: quote ? 'exact' : $('mode').value, absurdity: $('absurdity').value, technique: $('technique').value, targetDate: $('target').value, today: localDay(),
+      reference: quote ? quote.attribution : $('reference').value, palace: $('palace').value, ...(file ? { photo: await photoData(file) } : {}), ...(citation ? { citation } : {}) });
+    clearCreateForm();
     show(k);
     await library();
     status('Storyboard saved. Generate the images when ready.');
   } catch (e) { status(e.message); } finally { $('generate').disabled = false; }
-};
+}
 
 // How the technique was chosen: the facts code read, the decision model's typed answers, and the contract that was enforced.
 function decisionPanel(k) {
@@ -429,6 +462,27 @@ function reviewLine(r) {
 
 async function generateImage(k, i) {
   k.scenes[i] = await api('kits/' + k.id + '/image', 'POST', { index: i });
+}
+
+// Everything needed to rebuild the mnemonic from memory, on one screen and without any image: the technique and how it
+// works, why it was chosen, and for each item the wording, the cue that hooks it, and the picture to imagine.
+function sheetText(k) {
+  const lines = [k.title, (k.technique.name || k.technique.technique) + (k.technique.method ? ': ' + k.technique.method : ''), k.technique.reason, k.reference ? 'From: ' + k.reference : ''];
+  k.scenes.forEach((s, i) => lines.push('', (s.role === 'reference' ? 'Reference' : (i + 1) + '.') + ' ' + s.source, '   Cue: ' + s.cue, '   Picture: ' + s.prompt));
+  return lines.filter((l, i) => l || i > 3).join('\n');
+}
+function recallSheet(k) {
+  const sheet = el('div', null, 'sheet');
+  sheet.append(el('h2', 'Recall sheet'), el('p', (k.technique.name || k.technique.technique) + (k.technique.method ? ': ' + k.technique.method : ''), 'sheet-technique'), el('p', k.technique.reason));
+  if (k.reference) sheet.append(el('p', 'From: ' + k.reference));
+  const list = el('ol');
+  k.scenes.forEach(s => {
+    const item = el('li');
+    item.append(el('strong', s.source), el('span', 'Cue: ' + s.cue, 'cue'), el('span', 'Picture: ' + s.prompt, 'prompt'));
+    list.append(item);
+  });
+  sheet.append(list, button('Copy as text', async () => { await navigator.clipboard.writeText(sheetText(k)); status('Recall sheet copied.'); }));
+  return sheet;
 }
 
 function show(k) {
@@ -488,7 +542,7 @@ function show(k) {
     } catch (e) { if (current === k) show(k); throw Error(made + ' of ' + missing.length + ' images saved, then: ' + e.message); }
   }));
   tools.append(button('Hide / show text hints', () => grid.classList.toggle('hidden-cues')), button('Print cards', () => print()));
-  wrap.append(tools, grid);
+  wrap.append(tools, grid, recallSheet(k));
   if (/\d:\d/.test(k.reference || '')) wrap.append(languagePanel(k));
 
   wrap.append(planPanel(k), practicePanel(k), progressPanel(k));
@@ -508,7 +562,7 @@ function show(k) {
 }
 
 // The open kit is split into tabs so each job has its own screen: the pictures, practice, progress, and the detail.
-const TABS = [['storyboard', 'Storyboard'], ['practise', 'Practise'], ['progress', 'Progress'], ['details', 'Details']];
+const TABS = [['storyboard', 'Storyboard'], ['sheet', 'Recall sheet'], ['practise', 'Practise'], ['progress', 'Progress'], ['details', 'Details']];
 let kitTab = 'storyboard';
 function selectTab(name) {
   kitTab = name;
@@ -527,7 +581,7 @@ function tabify(wrap) {
   for (const node of nodes) {
     if (inHead && node.matches('h1, h2, p, img.face')) { head.append(node); continue; }
     inHead = false;
-    const tab = node.matches('.plan, .review') ? 'practise' : node.matches('details.progress') ? 'progress' : node.matches('details, button') ? 'details' : 'storyboard';
+    const tab = node.matches('.sheet') ? 'sheet' : node.matches('.plan, .review') ? 'practise' : node.matches('details.progress') ? 'progress' : node.matches('details, button') ? 'details' : 'storyboard';
     if (tab !== 'storyboard' && node.matches('details')) node.open = true;
     panels[tab].append(node);
   }
@@ -567,7 +621,7 @@ async function transcribe(blob) {
   });
   const r = await api('transcribe', 'POST', { audio: data, mime: blob.type.split(';')[0] });
   if (!r.text) { status('No words were heard in that audio. Try again closer to the microphone, or type the words.'); return; }
-  $('source').value = r.text;
+  $('source').value = [$('source').value.trim(), r.text].filter(Boolean).join(' ');
   status('Transcription ready. Please correct any errors.');
 }
 
@@ -583,7 +637,7 @@ $('record').onclick = async () => {
     recorder.ondataavailable = e => chunks.push(e.data);
     recorder.onstop = async () => {
       stream.getTracks().forEach(t => t.stop());
-      $('record').textContent = '● Record voice';
+      $('record').textContent = '● Speak';
       try { await transcribe(new Blob(chunks, { type: recorder.mimeType })); } catch (e) { status(e.message); }
     };
     recorder.start();
@@ -602,35 +656,32 @@ function link(text, href) {
   return a;
 }
 
-// The quotation or verse last taken from a research result, so its citation can travel with the kit.
-let found = null;
 const STANDING = { sourced: 'source given', unsourced: 'no source given on the page', disputed: 'listed as disputed', misattributed: 'listed as misattributed' };
-async function find(query) {
+// Looks a request up and shows what was found. A verse is exact text from a public-domain translation, so when it came
+// from the main box (`auto`) the kit is built straight away; a quotation comes from a community-edited page, so the
+// learner sees it, with the link to check it, and chooses. Either way they can fall back to their own words.
+async function find(query, { auto = false } = {}) {
   if (!query.trim()) return;
   status('The Research Agent is looking that up…');
   const r = await api('research', 'POST', { query, translation: $('translation').value }), box = $('found');
   box.replaceChildren();
-  if (!r.results.length) { status(''); return box.append(el('p', 'Nothing was found for “' + r.looked_up + '”. Try the name of the person, book, film or song.')); }
+  const own = () => button('Memorise what I typed instead', () => build(query));
+  if (!r.results.length) { status(''); return box.append(el('p', 'Nothing was found for “' + r.looked_up + '”. Try the name of the person, book, film or song, or memorise your own words.'), ...(auto ? [own()] : [])); }
+  const pick = q => { $('source').value = q.text; return build(q.text, { ...q, verse: r.kind === 'verse' }); };
+  if (auto && r.kind === 'verse') return pick(r.results[0]);
   for (const q of r.results) {
     const card = el('div', null, 'found'), by = el('p', null, 'built-with');
     by.append(el('span', [q.attribution, q.work, q.source].filter(Boolean).join(' · ') + ' · ' + STANDING[q.status] + ' · '), link('check it', q.url));
     if (q.sourceUrl) by.append(el('span', ' · '), link('cited source', q.sourceUrl));
-    card.append(el('p', q.text, 'quote'), by, button('Memorise this', () => {
-      found = q;
-      $('source').value = q.text; $('reference').value = q.attribution; $('kind').value = 'phrases'; $('mode').value = 'exact';
-      if (r.kind === 'verse') $('module').value = 'Bible verses';
-      status('Wording and reference filled in. Check the citation, then create the storyboard.');
-      $('source').focus();
-    }));
+    card.append(el('p', q.text, 'quote'), by, button('Memorise this', () => pick(q)));
     box.append(card);
   }
   box.append(el('p', r.kind === 'verse' ? 'Verse wording is retrieved from a public-domain translation.' : 'Wording is read from Wikiquote, which anyone can edit. Follow the link to confirm it before you memorise it.', 'built-with'));
+  if (auto) box.append(own());
   status('');
 }
-$('find-go').onclick = () => find($('find').value).catch(e => status(e.message));
-$('find').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); $('find-go').click(); } };
-$('daily').onclick = () => { $('find').value = $('daily').dataset.reference || ''; $('find-go').click(); };
-$('track').onchange = () => { if ($('track').value) { $('find').value = $('track').value; $('find-go').click(); } };
+$('daily').onclick = () => find($('daily').dataset.reference || '').catch(e => status(e.message));
+$('track').onchange = () => { if ($('track').value) find($('track').value).catch(e => status(e.message)); };
 async function loadTracks() {
   const t = await api('tracks?today=' + localDay());
   $('daily').dataset.reference = t.daily;
