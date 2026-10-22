@@ -3,6 +3,15 @@
 Dated record of functionality added or changed, newest first. Everything here was built during the Nebius x NVIDIA
 Global AI Hackathon submission period (26 August to 30 October 2026); the repository itself began on 2 October 2026.
 
+## 2026-10-21: Tavily search in the Research Agent
+
+- **Tavily finds where material lives, never what it says.** With `TAVILY_API_KEY` set, the Research Agent asks
+  Tavily which Wikiquote page holds the quotation the learner wants (ranked by person, work and topic together), and
+  which chapter and verse a passage described in words refers to. Wording is still fetched from Wikiquote or a
+  public-domain translation; search snippets are never shown. The studio says when Tavily found the page and links
+  where it named a passage. If Tavily is not configured or does not answer, the previous Wikiquote search is used.
+  Tests in `test/features.test.mjs`, including that a snippet's paraphrase never reaches the result.
+
 ## 2026-10-03 — fixes from the end-to-end audit
 
 Found by running the whole product against the live providers (`Recall-E2E-Test-Report-2026-10-03`, kept outside the

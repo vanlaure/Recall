@@ -240,6 +240,48 @@ test('with no usable pick the page\'s first quotations are shown, and a verse re
   await assert.rejects(research(''), /1–300 characters/);
 }));
 
+// A stand-in for Tavily: records each search and answers by the domains it was limited to; `fail` makes it error.
+async function withTavily(fail, fn) {
+  const searches = [];
+  const t = await listen((url, body) => {
+    searches.push(body);
+    if (fail) return [500, { error: 'down' }];
+    if (body.include_domains.includes('en.wikiquote.org')) return [200, { results: [{ url: 'https://en.wikiquote.org/wiki/Talk:Jim_Croce', title: 'Talk' }, { url: 'https://en.wikiquote.org/wiki/Jim_Croce', title: 'Jim Croce - Wikiquote', content: 'a paraphrase that must never be shown' }] }];
+    return [200, { results: [{ url: 'https://www.biblegateway.com/passage/?search=John+3', title: 'John 3:16 - King James Version', content: 'For God so loved...' }] }];
+  });
+  Object.assign(process.env, { TAVILY_BASE_URL: t.url, TAVILY_API_KEY: 'tvly-test' });
+  try { return await fn(searches); } finally { t.close(); delete process.env.TAVILY_BASE_URL; delete process.env.TAVILY_API_KEY; }
+}
+
+test('Tavily finds the Wikiquote page; the wording is still read from Wikiquote itself', () => withSources({ picks: [1] }, (m, src) => withTavily(false, async searches => {
+  const r = await research('a famous quote by Jim Croce');
+  assert.equal(r.found_by, 'tavily');
+  assert.deepEqual(searches[0].include_domains, ['en.wikiquote.org']);
+  assert.match(searches[0].query, /Jim Croce/);
+  assert.ok(!src.seen.some(u => u.includes('list=search')), 'Wikiquote search is not needed when Tavily found the page');
+  assert.ok(src.seen.some(u => u.includes('page=Jim Croce')) && !src.seen.some(u => u.includes('Talk:')), 'talk pages are skipped');
+  assert.equal(r.results[0].text.split('\n')[0], 'If I could save time in a bottle,');
+  assert.ok(!JSON.stringify(r).includes('paraphrase'), 'search snippets never reach the learner');
+})));
+
+test('Tavily names a described passage, whose wording comes from the public-domain source', () => withSources({}, (m, src) => withTavily(false, async searches => {
+  const v = await research('the verse about God loving the world', 'kjv');
+  assert.deepEqual([v.kind, v.found_by, v.looked_up, v.identified_at], ['verse', 'tavily', 'John 3:16', 'https://www.biblegateway.com/passage/?search=John+3']);
+  assert.equal(v.results[0].text, 'For God so loved the world.');
+  assert.deepEqual(searches[0].include_domains, ['biblegateway.com', 'biblehub.com', 'openbible.info']);
+  // A cited reference never needs a search.
+  const before = searches.length;
+  assert.equal((await research('John 3:16')).found_by, 'reference');
+  assert.equal(searches.length, before);
+})));
+
+test('if Tavily fails, the Research Agent falls back to Wikiquote search', () => withSources({ picks: [1] }, (m, src) => withTavily(true, async () => {
+  const r = await research('a famous quote by Jim Croce');
+  assert.equal(r.found_by, 'wikiquote');
+  assert.ok(src.seen.some(u => u.includes('srsearch=Jim Croce')));
+  assert.equal(r.results.length, 1);
+})));
+
 test('original-language aids keep only words that are in the verse, and are stored as unverified', () => withMocks({ language: { words: [{ english: 'loved', original: 'ἠγάπησεν', transliteration: 'ēgapēsen', language: 'Greek', gloss: 'loved' }, { english: 'grace', original: 'χάρις', transliteration: 'charis', language: 'Greek', gloss: 'favour' }] } }, async () => {
   const kit = { reference: 'John 3:16', text: VERSE };
   const aids = await languageAids(kit);
