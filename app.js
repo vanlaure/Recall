@@ -536,7 +536,12 @@ function show(k) {
   const wrap = $('kit');
   wrap.replaceChildren();
   wrap.append(el('h1', k.title), el('p', (k.technique.name || k.technique.technique) + ' · ' + k.technique.reason));
-  if (k.ai) wrap.append(el('p', 'Built with ' + k.ai.model + ' on ' + k.ai.platform + '.', 'built-with'));
+  if (k.ai) {
+    // Which model and platform built this kit, shown where a viewer of the kit will see it.
+    const credit = el('p', 'Built with ', 'model-credit');
+    credit.append(el('strong', k.ai.model), document.createTextNode(' on '), el('strong', k.ai.platform));
+    wrap.append(credit);
+  }
   // What the agents could not settle: a reference scene left out, or a storyboard kept over the reviewer's reservations.
   for (const note of k.notes || []) wrap.append(el('p', '⚠ ' + note, 'image-review warn'));
   if (k.reference || k.citation) {
