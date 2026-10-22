@@ -30,7 +30,9 @@ test('code decides what it can determine exactly, without the decision model', (
 test('the decision model is used only when confident and consistent with the facts', () => {
   const list = ['milk', 'eggs', 'bread'], long = ['a', 'b', 'c', 'd', 'e', 'f'];
   assert.equal(chosen({ units: list, laya: target('unordered_items', .9) }), 'link by laya');
-  assert.equal(chosen({ units: long, laya: target('ordered_items', .9) }), 'loci by laya');
+  assert.equal(chosen({ units: long, laya: target('ordered_items', .9) }), 'peg by laya', 'items in a fixed order go on numbered pegs');
+  assert.equal(chosen({ units: [...long, 'g', 'h', 'i', 'j', 'k'], laya: target('ordered_items', .9) }), 'loci by laya', 'more than ten need a route');
+  assert.equal(chosen({ units: long, laya: target('unordered_items', .9) }), 'loci by laya', 'order does not matter, so a route will do');
   assert.equal(chosen({ units: ['To be, or not to be.'], laya: target('exact_wording', .9) }), 'story by laya');
   assert.equal(chosen({ units: ['Inflation is a rise in prices.'], mode: 'meaning', laya: target('meaning', .9) }), 'visual by laya');
   assert.equal(chosen({ units: ['Priya Raman'], laya: target('name_face', .9) }), 'keyword by laya');

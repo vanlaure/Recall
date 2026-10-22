@@ -489,7 +489,8 @@ function recallSheet(k) {
 function show(k) {
   current = k;
   $('nav-kit').hidden = false;
-  $('nav-kit').textContent = 'Open kit · ' + k.title.slice(0, 24);
+  $('nav-kit').replaceChildren(el('span', 'Open kit'), el('small', k.title));
+  $('nav-kit').title = k.title;
   setView('kit');
   const wrap = $('kit');
   wrap.replaceChildren();
