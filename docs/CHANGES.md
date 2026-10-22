@@ -3,6 +3,28 @@
 Dated record of functionality added or changed, newest first. Everything here was built during the Nebius x NVIDIA
 Global AI Hackathon submission period (26 August to 30 October 2026); the repository itself began on 2 October 2026.
 
+## 2026-10-22: One input box, ordered lists on pegs, and material split into parts
+
+- **One box.** The Create page takes whatever the learner wants to memorise. A verse reference or a request for a quote
+  is looked up by the Research Agent (a verse builds the kit straight away; quotes are shown with a link to check them
+  first); anything else is memorised as typed, and the layout (list or passage) is guessed. The form clears after a
+  kit is saved. The record button is now Speak: the transcript is added to the same box, with spoken references
+  ("John 3 16") put back into "John 3:16".
+- **Ordered lists go on pegs.** When the decision model reads material as items in a fixed order, up to ten items use
+  the peg system and longer lists a route. Unordered lists are unchanged.
+- **Mixed material is split into parts, each with its own technique.** Code reads what kind each item is from its
+  shape (digits, a year, a numbered step, a word pair, a titled name, a short item, a sentence), groups neighbouring
+  items of one kind, and builds each group under its own contract: for example groceries on the link system and a code
+  on the Major system, in the learner's order. Code facts settle what they can without a model call; the decision model
+  and Memory Expert are asked only about parts the facts cannot settle. Neighbouring parts that end up with the same
+  technique are joined. A learner's own technique, a palace or a face photo keeps one technique for the whole kit, and
+  material of one kind is built exactly as before. A kit records its parts in `segments` (each with its technique,
+  contract and decision record) and tags each scene with its `part`; a cue rewrite uses its own part's contract.
+  Limits: at most four parts; items are classed by shape only, so a code written inside words ("locker 4821") is read as
+  a plain item; imported kit files come back as one-technique kits. Tests in `test/parts.test.mjs`.
+- **Recall sheet.** Each kit has a tab listing the technique, why it was chosen, and every item with its cue and the
+  picture to imagine, grouped by part for a split kit, so it can be recalled without the images. It can be copied as text.
+
 ## 2026-10-21: Tavily search in the Research Agent
 
 - **Tavily finds where material lives, never what it says.** With `TAVILY_API_KEY` set, the Research Agent asks
