@@ -5,6 +5,7 @@ data
 node_modules
 test
 eval
+!eval/technique-samples.json
 docs
 docker
 scripts

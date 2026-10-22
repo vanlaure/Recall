@@ -263,6 +263,7 @@ async function showStudio(user) {
   $('password').value = '';
   await library();
   nextDrill();
+  benchmarkPanel();
   // Each of these can fail on its own; say which one did, and keep the rest of the studio working.
   await Promise.all([
     loadPalaces().catch(() => status('Your saved memory palaces could not be loaded. Refresh the page to try again.')),
@@ -501,6 +502,14 @@ function show(k) {
     const a = el('a');
     a.href = u; a.download = 'recall-' + k.id + '.json'; a.click();
     setTimeout(() => URL.revokeObjectURL(u), 1000);
+  }), button('Export audit JSON', async () => {
+    // The receipt is built by the server from the kit's own records: every decision, check and refusal, with reasons.
+    const receipt = await api('kits/' + k.id + '/audit');
+    const u = URL.createObjectURL(new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' }));
+    const a = el('a');
+    a.href = u; a.download = 'recall-audit-' + k.id + '.json'; a.click();
+    setTimeout(() => URL.revokeObjectURL(u), 1000);
+    status('Audit receipt saved: ' + receipt.rejections.length + (receipt.rejections.length === 1 ? ' refusal' : ' refusals') + ' recorded.');
   }), button('Delete kit', async () => {
     if (confirm('Delete this saved memory kit?')) { await api('kits/' + k.id, 'DELETE'); wrap.replaceChildren(); current = null; $('nav-kit').hidden = true; await library(); setView('library'); }
   }));
@@ -714,6 +723,54 @@ $('palace-save').onclick = async () => {
     status('Palace saved. Choose it under “Memory palace” when you create a kit.');
   } catch (e) { status(e.message); }
 };
+
+// Live benchmark: held-out tasks through the full workflow, scored by code, shown beside the published numbers and
+// logged on the public evaluation page.
+function benchmarkPanel() {
+  const box = $('benchmark'), out = el('div', null, 'decision'), go = el('button', 'Run live benchmark'), mark = ok => ok ? '✓' : '✗';
+  go.type = 'button';
+  box.replaceChildren(el('p', 'Runs 5 tasks chosen at random from the held-out test set through the same agent workflow as Create (no images), then scores each in code: was the technique acceptable, did the storyboard meet its contract, and on which attempt. It takes a few minutes and is logged publicly.'), go, out);
+  const link = el('a', 'See every run, and what the code refused, on the public evaluation page');
+  link.href = '/eval'; link.target = '_blank'; link.rel = 'noopener';
+  box.append(el('p', null, 'built-with'));
+  box.lastChild.append(link);
+  go.onclick = async () => {
+    go.disabled = true;
+    const list = el('ol'), rows = [], texts = [];
+    out.replaceChildren(list);
+    try {
+      const r = await fetch('/api/benchmark', { method: 'POST', headers: { ...authHeaders(), Accept: 'application/x-ndjson' }, body: '{}' });
+      if (!r.ok) throw Error((await r.json()).error);
+      const reader = r.body.getReader(), decoder = new TextDecoder();
+      let buffer = '', run;
+      for (;;) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+        for (const text of lines.filter(Boolean)) {
+          const msg = JSON.parse(text);
+          if (msg.type === 'task') { texts[msg.n] = msg.text; rows[msg.n] = el('li', '“' + msg.text + '”: running…'); list.append(rows[msg.n]); }
+          else if (msg.type === 'step' && rows[msg.n]) rows[msg.n].textContent = '“' + texts[msg.n] + '”: ' + msg.agent + (msg.detail ? ', ' + msg.detail : '');
+          else if (msg.type === 'result') rows[msg.n].textContent = '“' + msg.text + '”: ' + (msg.error ? '✗ ' + msg.error : msg.technique + ' (' + msg.decidedBy + ') · technique ' + mark(msg.techniqueOk) + ' · contract ' + mark(msg.compliant) + ' · ' + msg.attempts + (msg.attempts === 1 ? ' attempt' : ' attempts') + ' · ' + msg.seconds + ' s');
+          else if (msg.type === 'error') throw Error(msg.error);
+          else if (msg.type === 'done') run = msg.run;
+        }
+        if (done) break;
+      }
+      if (!run) throw Error('The server stopped before the benchmark finished.');
+      const table = el('table'), head = el('tr');
+      head.append(el('th', 'Measure'), el('th', 'This run'), el('th', 'Published (' + run.published.source + ')'));
+      table.append(head);
+      for (const [label, live, pub] of [['Technique acceptable', run.score.techniqueOk, run.published.selection], ['Contract met', run.score.compliant, run.published.compliant], ['Met on first attempt', run.score.firstAttempt, run.published.firstAttempt]]) {
+        const tr = el('tr');
+        tr.append(el('td', label), el('td', live + ' of ' + run.ran), el('td', pub.value + ': ' + pub.label));
+        table.append(tr);
+      }
+      out.append(table);
+    } catch (e) { out.append(el('p', e.message)); } finally { go.disabled = false; }
+  };
+}
 
 // Major-system drill: a number to put into words, or a word to read back as digits. Code checks the answer.
 const DRILL_WORDS = ['tea', 'Noah', 'ray', 'law', 'shoe', 'key', 'fee', 'bee', 'toes', 'dad', 'tin', 'dime', 'tire', 'towel', 'dish', 'duck', 'dove', 'tub', 'nose', 'net', 'nun', 'name', 'nail', 'neck', 'knife', 'mouse', 'mat', 'moon', 'hammer', 'mule', 'match', 'movie', 'mop', 'rose', 'rat', 'rain', 'ram', 'roll', 'rock', 'roof', 'rope', 'lace', 'lid', 'lion', 'lime', 'lily', 'leaf', 'lip'];
