@@ -425,8 +425,22 @@ async function build(text, quote) {
   } catch (e) { status(e.message); } finally { $('generate').disabled = false; }
 }
 
+// A kit built in parts: which method each part got, who decided it, and the facts or decision-model answers behind that.
+function splitPanel(k) {
+  const panel = el('details', null, 'decision'), who = { learner: 'You chose it.', code: 'Decided by the facts of the material, without a model.', laya: 'Chosen by the decision model.', nemotron: 'Chosen by the Memory Expert.' };
+  panel.append(el('summary', 'How the techniques were chosen'), el('p', k.technique.reason));
+  k.segments.forEach((g, n) => {
+    const t = g.technique, answer = g.decision?.answers?.find(a => a.id === 'target');
+    panel.append(el('p', 'Part ' + (n + 1) + ' · ' + t.name + ' (' + g.count + (g.count === 1 ? ' item' : ' items') + '): ' + (who[t.selectedBy] || '') + ' ' + (t.reason || '') + (answer ? ' The decision model read this part as “' + String(answer.answer).replace(/_/g, ' ') + '” (' + Math.round(answer.confidence * 100) + '%).' : '')));
+    if (g.cueCheck?.checks) panel.append(el('p', 'Cue check, part ' + (n + 1) + ': ' + g.cueCheck.checks.filter(c => c.matches).length + ' of ' + g.cueCheck.checks.length + ' cues were read back as their own item.', 'built-with'));
+  });
+  panel.append(el('p', 'Each part is held to its own technique contract by code: every scene keeps the source wording, supplies that technique’s evidence, and no image prompt may ask for numerals, words, labels or logos.', 'built-with'));
+  return panel;
+}
+
 // How the technique was chosen: the facts code read, the decision model's typed answers, and the contract that was enforced.
 function decisionPanel(k) {
+  if (k.segments) return splitPanel(k);
   const d = k.decision, f = d.facts, panel = el('details', null, 'decision');
   const who = { learner: 'You chose the technique.', code: 'Decided by the facts of the material, without a model.', laya: 'Chosen by the decision model.', nemotron: 'Chosen by the Memory Expert' + (k.technique.escalated ? ', because: ' + k.technique.escalated : '.') }[k.technique.selectedBy] || '';
   panel.append(el('summary', 'How this technique was chosen'), el('p', who));
@@ -468,21 +482,48 @@ async function generateImage(k, i) {
 // Everything needed to rebuild the mnemonic from memory, on one screen and without any image: the technique and how it
 // works, why it was chosen, and for each item the wording, the cue that hooks it, and the picture to imagine.
 function sheetText(k) {
-  const lines = [k.title, (k.technique.name || k.technique.technique) + (k.technique.method ? ': ' + k.technique.method : ''), k.technique.reason, k.reference ? 'From: ' + k.reference : ''];
-  k.scenes.forEach((s, i) => lines.push('', (s.role === 'reference' ? 'Reference' : (i + 1) + '.') + ' ' + s.source, '   Cue: ' + s.cue, '   Picture: ' + s.prompt));
-  return lines.filter((l, i) => l || i > 3).join('\n');
+  const lines = [k.title, ''];
+  const add = (scenes, offset) => scenes.forEach((s, i) => lines.push((s.role === 'reference' ? 'Reference' : (offset + i + 1) + '.') + ' ' + s.source, '   Cue: ' + s.cue, '   Picture: ' + s.prompt, ''));
+  if (k.segments) {
+    k.segments.forEach((g, n) => {
+      lines.push('Part ' + (n + 1) + ': ' + g.technique.name + (g.technique.method ? ': ' + g.technique.method : ''), g.technique.reason, '');
+      add(k.scenes.filter(s => s.part === n), g.from);
+    });
+    add(k.scenes.filter(s => s.role === 'reference'), 0);
+  } else {
+    lines.push((k.technique.name || k.technique.technique) + (k.technique.method ? ': ' + k.technique.method : ''), k.technique.reason, '');
+    add(k.scenes, 0);
+  }
+  if (k.reference) lines.splice(2, 0, 'From: ' + k.reference, '');
+  return lines.join('\n').trim();
 }
-function recallSheet(k) {
-  const sheet = el('div', null, 'sheet');
-  sheet.append(el('h2', 'Recall sheet'), el('p', (k.technique.name || k.technique.technique) + (k.technique.method ? ': ' + k.technique.method : ''), 'sheet-technique'), el('p', k.technique.reason));
-  if (k.reference) sheet.append(el('p', 'From: ' + k.reference));
+function sheetList(scenes) {
   const list = el('ol');
-  k.scenes.forEach(s => {
+  scenes.forEach(s => {
     const item = el('li');
     item.append(el('strong', s.source), el('span', 'Cue: ' + s.cue, 'cue'), el('span', 'Picture: ' + s.prompt, 'prompt'));
     list.append(item);
   });
-  sheet.append(list, button('Copy as text', async () => { await navigator.clipboard.writeText(sheetText(k)); status('Recall sheet copied.'); }));
+  return list;
+}
+function recallSheet(k) {
+  const sheet = el('div', null, 'sheet');
+  sheet.append(el('h2', 'Recall sheet'));
+  if (k.reference) sheet.append(el('p', 'From: ' + k.reference));
+  if (k.segments) {
+    // A kit built in parts: each part says which method it uses and why, then lists its own items in order.
+    sheet.append(el('p', k.technique.reason));
+    k.segments.forEach((g, n) => {
+      const list = sheetList(k.scenes.filter(s => s.part === n));
+      list.start = g.from + 1;
+      sheet.append(el('h3', 'Part ' + (n + 1) + ' · ' + g.technique.name), el('p', g.technique.method, 'sheet-technique'), el('p', g.technique.reason), list);
+    });
+    const ref = k.scenes.filter(s => s.role === 'reference');
+    if (ref.length) sheet.append(el('h3', 'Reference'), sheetList(ref));
+  } else {
+    sheet.append(el('p', (k.technique.name || k.technique.technique) + (k.technique.method ? ': ' + k.technique.method : ''), 'sheet-technique'), el('p', k.technique.reason), sheetList(k.scenes));
+  }
+  sheet.append(button('Copy as text', async () => { await navigator.clipboard.writeText(sheetText(k)); status('Recall sheet copied.'); }));
   return sheet;
 }
 
@@ -515,6 +556,7 @@ function show(k) {
   k.scenes.forEach((s, i) => {
     const card = el('article', null, 'scene');
     card.append(el('h2', s.role === 'reference' ? 'Reference' : 'Scene ' + (i + 1)));
+    if (k.segments?.[s.part]) card.append(el('p', k.segments[s.part].technique.name, 'part-tag'));
     if (s.image) { const img = el('img'); img.src = s.image; img.alt = s.cue; card.append(img); if (s.review) card.append(reviewLine(s.review)); }
     else card.append(el('p', 'Image not generated yet.', 'placeholder'));
     card.append(el('p', s.source, 'source'), el('p', s.cue, 'cue'));
