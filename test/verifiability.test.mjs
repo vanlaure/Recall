@@ -61,7 +61,7 @@ test('/eval is public, shows counts for everyone and full records only for publi
     assert.match(page.headers.get('content-security-policy'), /default-src 'none'/);
     const html = await page.text();
     assert.match(html, /<b>2<\/b><span>storyboards built<\/span>/);
-    assert.match(html, /<b>milk<\/b> <span class="muted">· demo/, 'the published account\'s kit is shown in full');
+    assert.match(html, /<b>milk, eggs<\/b> <span class="muted">· demo/, 'the published account\'s kit is shown in full');
     assert.match(html, /source wording/);
     assert.doesNotMatch(html, /secret plans|hidden key/, 'an unpublished account contributes counts only');
     assert.doesNotMatch(html, /<script/i);
@@ -104,3 +104,12 @@ test('a benchmark task that fails is recorded as a failure, not dropped', () => 
   assert.deepEqual([run.ran, run.score.compliant, run.results[0].compliant], [1, 0, false]);
   assert.match(run.results[0].error, /after 3 attempts/);
 }));
+
+test('kits are named by their list items or their reference, not just the first item', async () => {
+  const { kitTitle } = await import('../lib/orchestrate.mjs');
+  assert.equal(kitTitle(['milk', 'eggs', 'bread'], 'list'), 'milk, eggs, bread');
+  assert.equal(kitTitle(['For God so loved the world,', 'that he gave'], 'phrases', 'John 3:16'), 'John 3:16');
+  assert.equal(kitTitle(['The first sentence.', 'The second.'], 'passage'), 'The first sentence.');
+  const long = kitTitle(Array.from({ length: 12 }, (_, i) => 'grocery item ' + i), 'list');
+  assert.ok(long.length <= 70 && long.endsWith(', …'), long);
+});
