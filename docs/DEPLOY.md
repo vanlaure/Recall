@@ -10,14 +10,17 @@ What was verified locally with Docker on 2026-10-02, and what was not:
   volume. It used about 30 MB of memory.
 - Verified: the Laya image builds with its model inside (3.3 GB) and starts with no network access. It used about
   1.9 GB of memory at start and 2.9 GB after use.
-- Not verified: anything on Railway itself. The steps below follow Railway's documented behaviour (Dockerfile builds,
-  volumes, `railway.json`, private networking) but have not been run there.
+- Verified on Railway on 2026-10-22: the app deploys from this repository and serves the studio at its Railway domain;
+  with a volume at `/data` and `RAILWAY_RUN_UID=0` (below) accounts and kits are saved; sign-up, verse retrieval, kit
+  creation on Token Factory, image generation with inspection, and the library all worked through the API. The Laya
+  service built there from `docker/laya` (about 15 minutes), the app reached it at `laya.railway.internal:8000`, and
+  it answered decisions; it was then removed from the live demo for cost.
 
 ## 1. The app
 
 1. In Railway: **New Project → Deploy from GitHub repo** and pick this repository. Railway reads `railway.json`,
    builds the `Dockerfile` and checks `/api/config` for health.
-2. **Add a volume** to the service, mounted at `/data`. Without it, every redeploy erases all accounts and kits. The container runs as the unprivileged `node` user (uid 1000); if the volume is not writable by it, the server logs "The data directory /data is not writable" at start.
+2. **Add a volume** to the service, mounted at `/data`. Without it, every redeploy erases all accounts and kits. The container runs as the unprivileged `node` user (uid 1000); **On Railway the volume is mounted owned by root, so the `node` user cannot write to it: set `RAILWAY_RUN_UID` = `0` (see the table).** Without it, sign-up fails with a 400 and the server logs "The data directory /data is not writable" at start; this was hit on 2026-10-22.
 3. **Set the variables** (Service → Variables). Railway provides `PORT` itself; do not set `HOST`, `PORT` or
    `DATA_DIR`, the image already does.
 
@@ -36,6 +39,7 @@ What was verified locally with Docker on 2026-10-02, and what was not:
    | `TAVILY_API_KEY` | your Tavily key (`tvly-…`); enables the Tavily search step in the Research Agent and qualifies for the Best Use of Tavily bonus |
    | `EVAL_PUBLIC_USERS` | comma-separated usernames whose refusal records `/eval` shows in full, such as `demo`; everyone else appears as counts only |
    | `SIGNUP_CODE` | a code of your choosing; give it to the judges. Without it anyone can sign up and spend your credits. |
+   | `RAILWAY_RUN_UID` | `0`: Railway mounts the volume owned by root, so the container must run as root to write to it |
 
 4. **Generate a domain** (Service → Settings → Networking). Railway serves it over HTTPS; the app then marks its
    session cookie `Secure`.
@@ -57,7 +61,7 @@ enabling it.
    to `docker/laya`. Railway reads `docker/laya/railway.json` and builds that `Dockerfile`. The first build downloads
    PyTorch and the 1.5 GB model, so it takes several minutes.
 2. Name the service `laya` and set one variable on it: `LAYA_HOST` = `::` (Railway's private network uses IPv6).
-   Do not generate a public domain for it.
+   Do not generate a public domain for it. From the command line: `railway add --service laya --variables "LAYA_HOST=::"`, then `railway up docker/laya --path-as-root --service laya --detach`.
 3. On the app service, set `LAYA_BASE_URL` = `http://laya.railway.internal:8000` and `LAYA_MIN_CONFIDENCE` = `0.5`.
 4. Redeploy the app and build a storyboard. The progress list should show "Decision model: recall target: …". If it
    shows "unavailable", the app could not reach Laya; the storyboard still completes.
