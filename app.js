@@ -18,7 +18,7 @@ async function api(path, method = 'GET', data) {
   const b = await r.json();
   if (r.status === 401 && !['login', 'register', 'logout'].includes(path)) showAuth();
   // A bare 'not found' means the server has no such route, which happens when it is running older code than this page.
-  if (r.status === 404 && /^(Route not|Not) found.$/.test(b.error)) throw Error('The server did not recognise this request. It may be running an older version: restart it, then refresh this page.');
+  if (r.status === 404 && /^(Route not|Not) found.$/.test(b.error)) throw Error('The server did not recognize this request. It may be running an older version: restart it, then refresh this page.');
   if (!r.ok) throw Error(b.error);
   return b;
 }
@@ -66,14 +66,14 @@ function renderToday() {
   const today = localDay(), due = kits.filter(k => dueDay(k) <= today), box = $('today');
   box.replaceChildren();
   $('due-count').textContent = due.length ? ' · ' + due.length + ' due' : '';
-  if (!kits.length) return box.append(el('p', 'Create your first memory kit, then come back here to practise it.'));
+  if (!kits.length) return box.append(el('p', 'Create your first memory kit, then come back here to practice it.'));
   if (!due.length) {
     const next = kits.map(dueDay).sort()[0];
     return box.append(el('p', 'Nothing is due today. Your next session is ' + niceDay(next) + '.'));
   }
   for (const k of due) {
     const row = el('div', null, 'today-row');
-    row.append(el('span', k.title + (k.targetDay ? ' · needed by ' + niceDay(k.targetDay) : '')), button('Practise', () => { show(k); startPractice(k, k.scenes.map((_, i) => i)); }));
+    row.append(el('span', k.title + (k.targetDay ? ' · needed by ' + niceDay(k.targetDay) : '')), button('Practice', () => { show(k); startPractice(k, k.scenes.map((_, i) => i)); }));
     box.append(row);
   }
 }
@@ -106,7 +106,7 @@ function renderCalendar() {
     for (const e of list.slice(0, 3)) {
       const text = e.kind === 'done' ? '✓ ' + percent(e.score) + ' ' + e.kit.title : e.kind === 'final' ? '★ ' + e.kit.title : e.kit.title;
       const chip = el('button', text, 'cal-chip ' + e.kind);
-      chip.type = 'button'; chip.title = (e.kind === 'done' ? 'Practised: ' : e.kind === 'final' ? 'Needed by this day: ' : 'Practice planned: ') + e.kit.title;
+      chip.type = 'button'; chip.title = (e.kind === 'done' ? 'Practiced: ' : e.kind === 'final' ? 'Needed by this day: ' : 'Practice planned: ') + e.kit.title;
       chip.onclick = () => show(e.kit);
       cell.append(chip);
     }
@@ -198,8 +198,8 @@ function repairOffer(k, i) {
 function practicePanel(k) {
   const panel = el('div', null, 'review'), all = k.scenes.map((_, i) => i), weak = all.filter(i => (k.scenes[i].stats?.missStreak || 0) > 0), tools = el('div', null, 'toolbar'), stage = el('div');
   stage.id = 'practice-stage';
-  tools.append(button('Practise all ' + all.length + (all.length === 1 ? ' item' : ' items'), () => startPractice(k, all)));
-  if (weak.length && weak.length < all.length) tools.append(button('Practise the ' + weak.length + ' I missed', () => startPractice(k, weak)));
+  tools.append(button('Practice all ' + all.length + (all.length === 1 ? ' item' : ' items'), () => startPractice(k, all)));
+  if (weak.length && weak.length < all.length) tools.append(button('Practice the ' + weak.length + ' I missed', () => startPractice(k, weak)));
   if (all.length > 1) tools.append(button('In reverse order', () => startPractice(k, [...all].reverse())));
   if (k.mode !== 'meaning' && k.scenes.some(s => s.source.trim().split(/\s+/).length > 2)) tools.append(button('From first letters', () => startPractice(k, all, { letters: true })));
   panel.append(el('h2', 'Practice recall'), el('p', 'Guided practice asks for one item at a time. Hints are there if you need them, and recalling without one counts for more.'), tools, stage);
@@ -242,7 +242,7 @@ function progressPanel(k) {
     table.append(head);
     for (const s of k.scenes) {
       const st = s.stats || { attempts: 0, recalled: 0, unaided: 0, missStreak: 0 }, row = el('tr');
-      const state = !st.attempts ? 'not practised yet' : st.missStreak >= 2 ? 'needs a new cue' : st.missStreak === 1 ? 'missed last time' : st.unaided === st.attempts ? 'solid' : st.recalled === st.attempts ? 'recalled, with hints' : 'shaky';
+      const state = !st.attempts ? 'not practiced yet' : st.missStreak >= 2 ? 'needs a new cue' : st.missStreak === 1 ? 'missed last time' : st.unaided === st.attempts ? 'solid' : st.recalled === st.attempts ? 'recalled, with hints' : 'shaky';
       row.append(el('td', s.source.slice(0, 60)), el('td', String(st.attempts)), el('td', String(st.recalled)), el('td', String(st.unaided)), el('td', state + (s.repaired ? ' · cue rewritten' + (s.repaired > 1 ? ' ' + s.repaired + ' times' : '') : '')));
       table.append(row);
     }
@@ -293,7 +293,7 @@ async function init() {
     // Platforms retire models without notice; the studio says so before a learner spends time on a storyboard that cannot be built.
     if (c.text && c.textModelListed === false) {
       $('config').className = 'image-review warn';
-      $('config').textContent += ` · WARNING: ${c.textProvider.model} is not in the ${c.textProvider.label} catalogue any more, so storyboards cannot be generated until ${c.textProvider.name === 'nebius' ? 'NEBIUS_MODEL' : 'NVIDIA_MODEL'} names a listed model.`;
+      $('config').textContent += ` · WARNING: ${c.textProvider.model} is not in the ${c.textProvider.label} catalog anymore, so storyboards cannot be generated until ${c.textProvider.name === 'nebius' ? 'NEBIUS_MODEL' : 'NVIDIA_MODEL'} names a listed model.`;
     }
     $('techniques').replaceChildren(...c.techniques.map(t => el('p', t[1] + ': ' + t[2])));
     $('code').hidden = $('code-label').hidden = !c.signupCode;
@@ -384,7 +384,7 @@ function clearCreateForm() {
   try { localStorage.removeItem('recall-draft'); } catch {}
 }
 
-// One box takes whatever the learner wants to memorise. Either it is a request ("John 3:16", "a famous quote by Jim
+// One box takes whatever the learner wants to memorize. Either it is a request ("John 3:16", "a famous quote by Jim
 // Croce", "a line from Casablanca"), which the Research Agent resolves to real wording, or it is the material itself.
 const VERSE_REF = /\b(?:[1-3] )?[A-Z][a-z]+(?: of [A-Z][a-z]+)? \d{1,3}:\d{1,3}/;
 const ASKS_FOR = /\b(?:quotes?|quotations?|lines?|lyrics?|sayings?|verses?|speech)\s+(?:by|from|about|of)\b|\b(?:quotes?|quotation|bible)\b/i;
@@ -614,7 +614,7 @@ function show(k) {
 }
 
 // The open kit is split into tabs so each job has its own screen: the pictures, practice, progress, and the detail.
-const TABS = [['storyboard', 'Storyboard'], ['sheet', 'Recall sheet'], ['practise', 'Practise'], ['progress', 'Progress'], ['details', 'Details']];
+const TABS = [['storyboard', 'Storyboard'], ['sheet', 'Recall sheet'], ['practise', 'Practice'], ['progress', 'Progress'], ['details', 'Details']];
 let kitTab = 'storyboard';
 function selectTab(name) {
   kitTab = name;
@@ -723,18 +723,18 @@ async function find(query, { auto = false } = {}) {
   status('The Research Agent is looking that up…');
   const r = await api('research', 'POST', { query, translation: $('translation').value }), box = $('found');
   box.replaceChildren();
-  const own = () => button('Memorise what I typed instead', () => build(query));
-  if (!r.results.length) { status(''); return box.append(el('p', 'Nothing was found for “' + r.looked_up + '”. Try the name of the person, book, film or song, or memorise your own words.'), ...(auto ? [own()] : [])); }
+  const own = () => button('Memorize what I typed instead', () => build(query));
+  if (!r.results.length) { status(''); return box.append(el('p', 'Nothing was found for “' + r.looked_up + '”. Try the name of the person, book, film or song, or memorize your own words.'), ...(auto ? [own()] : [])); }
   const pick = q => { $('source').value = q.text; return build(q.text, { ...q, verse: r.kind === 'verse' }); };
   if (auto && r.kind === 'verse') return pick(r.results[0]);
   for (const q of r.results) {
     const card = el('div', null, 'found'), by = el('p', null, 'built-with');
     by.append(el('span', [q.attribution, q.work, q.source].filter(Boolean).join(' · ') + ' · ' + STANDING[q.status] + ' · '), link('check it', q.url));
     if (q.sourceUrl) by.append(el('span', ' · '), link('cited source', q.sourceUrl));
-    card.append(el('p', q.text, 'quote'), by, button('Memorise this', () => pick(q)));
+    card.append(el('p', q.text, 'quote'), by, button('Memorize this', () => pick(q)));
     box.append(card);
   }
-  box.append(el('p', r.kind === 'verse' ? 'Verse wording is retrieved from a public-domain translation.' : 'Wording is read from Wikiquote, which anyone can edit. Follow the link to confirm it before you memorise it.', 'built-with'));
+  box.append(el('p', r.kind === 'verse' ? 'Verse wording is retrieved from a public-domain translation.' : 'Wording is read from Wikiquote, which anyone can edit. Follow the link to confirm it before you memorize it.', 'built-with'));
   // Tavily located the page or named the passage; the wording above still comes from the source itself.
   if (r.found_by === 'tavily') {
     const how = el('p', null, 'built-with');
